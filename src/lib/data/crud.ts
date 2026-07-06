@@ -11,7 +11,7 @@ import {
     workouts as workoutsTable,
     objectives as objectivesTable,
 } from '@/lib/db/schema';
-import { eq, and, ne, notInArray, gte, lte, sql } from 'drizzle-orm';
+import { eq, and, ne, notInArray, inArray, gte, lte, sql } from 'drizzle-orm';
 import { createClient } from '@/lib/supabase/server';
 import { Block, Objective, Plan, Profile, Schedule, Week, Workout } from './DatabaseTypes';
 import type { PlannedData, CompletedData, DeviationMetrics } from './type';
@@ -540,6 +540,22 @@ export async function deleteWorkoutById(workoutId: string): Promise<void> {
         and(
             eq(workoutsTable.userId, userId),
             eq(workoutsTable.id, workoutId)
+        )
+    );
+}
+
+/**
+ * Supprime plusieurs séances en un seul DELETE. À utiliser quand on remplace
+ * un lot de séances (ex. régénération d'une semaine) pour éviter le coût O(N)
+ * de la réécriture complète via `saveWorkout`.
+ */
+export async function deleteWorkoutsByIds(workoutIds: string[]): Promise<void> {
+    if (workoutIds.length === 0) return;
+    const userId = await getCurrentUserId();
+    await db.delete(workoutsTable).where(
+        and(
+            eq(workoutsTable.userId, userId),
+            inArray(workoutsTable.id, workoutIds),
         )
     );
 }

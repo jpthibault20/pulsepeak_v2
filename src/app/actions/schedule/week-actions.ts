@@ -15,14 +15,14 @@ import { addDays, format } from 'date-fns';
 import { revalidatePath } from 'next/cache';
 import { parseLocalDate } from '@/lib/utils';
 import {
+    deleteWorkoutsByIds,
     getBlock,
     getObjectives,
     getPlan,
     getProfile,
     getWeek,
     getWorkout,
-    saveWeek,
-    saveWorkout,
+    saveWorkoutsBatch,
 } from '@/lib/data/crud';
 import type { AvailabilitySlot } from '@/lib/data/type';
 import { findBlockAndWeekForDate } from './_internals/week-finder';
@@ -93,6 +93,11 @@ export async function generateWeekWorkoutsFromDate(
     comment: string | null,
     weeklyAvailability: { [key: string]: AvailabilitySlot }
 ): Promise<void> {
+    // [TIMING] Instrumentation temporaire pour calibrer les étapes de la progress bar
+    const tStart = performance.now();
+    const ms = (from: number) => Math.round(performance.now() - from);
+
+    const tFetch0 = performance.now();
     const [profile, blocks, weeks, existingWorkouts, plans] = await Promise.all([
         getProfile(),
         getBlock(),
@@ -100,9 +105,11 @@ export async function generateWeekWorkoutsFromDate(
         getWorkout(),
         getPlan(),
     ]);
+    console.log(`[week-gen] 1/4 fetch initial (profile+blocks+weeks+workouts+plans): ${ms(tFetch0)}ms`);
 
     if (!blocks || !weeks) throw new Error("Aucun plan trouvé.");
 
+    const tCtx0 = performance.now();
     const result = findBlockAndWeekForDate(blocks, weeks, parseLocalDate(weekStartDate));
     if (!result) throw new Error("Aucun bloc actif pour cette semaine.");
 
@@ -121,6 +128,9 @@ export async function generateWeekWorkoutsFromDate(
     );
 
     const realCompletion3 = computeAvgCompletion(existingWorkouts ?? [], weeks, week.id);
+    console.log(`[week-gen] 2/4 contexte (findBlock+objectives+completion): ${ms(tCtx0)}ms`);
+
+    const tAI0 = performance.now();
     const newWorkouts = await CreateWorkoutForWeek(
         profile,
         plan,
@@ -131,32 +141,27 @@ export async function generateWeekWorkoutsFromDate(
         weeklyAvailability,
         weekObjectives,
     );
+    console.log(`[week-gen] 3/4 CreateWorkoutForWeek (IA totale): ${ms(tAI0)}ms — ${newWorkouts?.length ?? 0} séances`);
 
     if (!newWorkouts || newWorkouts.length === 0) {
         throw new Error("L'IA n'a retourné aucune séance. Les séances existantes sont conservées.");
     }
 
-    // On n'écrase QUE les séances non-complétées (pending + missed) de la semaine
-    // pour éviter la pollution de régénérations successives. Les séances complétées
-    // (réellement faites par l'athlète) sont préservées.
-    const keptWorkouts = (existingWorkouts ?? []).filter(
-        w => !(w.weekId === week.id && w.status !== 'completed')
-    );
-    const keptWeekWorkoutIds = keptWorkouts
-        .filter(w => w.weekId === week.id)
+    const tSave0 = performance.now();
+    // On supprime UNIQUEMENT les pending/missed de la semaine (celles qu'on remplace)
+    // et on insère les nouvelles en un seul INSERT multi-lignes. Les séances complétées
+    // sont préservées. `workoutsId` de la semaine est dérivé au read (non stocké),
+    // donc pas besoin de mettre à jour la table `weeks`.
+    const removedIds = (existingWorkouts ?? [])
+        .filter(w => w.weekId === week.id && w.status !== 'completed')
         .map(w => w.id);
 
-    // Mettre à jour workoutsId de la semaine (conserver les IDs complétés + ajouter les nouveaux)
-    const updatedWeeks = weeks.map(w =>
-        w.id === week.id
-            ? { ...w, workoutsId: [...keptWeekWorkoutIds, ...newWorkouts.map(wo => wo.id)] }
-            : w
-    );
-
     await Promise.all([
-        saveWorkout([...keptWorkouts, ...newWorkouts]),
-        saveWeek(updatedWeeks),
+        deleteWorkoutsByIds(removedIds),
+        saveWorkoutsBatch(newWorkouts),
     ]);
 
     revalidatePath('/');
+    console.log(`[week-gen] 4/4 save (delete+batchInsert+revalidate): ${ms(tSave0)}ms`);
+    console.log(`[week-gen] ✓ TOTAL: ${ms(tStart)}ms`);
 }
