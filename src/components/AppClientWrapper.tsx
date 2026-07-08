@@ -593,6 +593,7 @@ export default function AppClientWrapper({ initialProfile, initialSchedule, init
                                 onCreatePlannedWorkoutAI={handleCreatePlannedWorkoutAI}
                                 onSaveObjective={handleSaveObjective}
                                 onRefresh={refreshData}
+                                onMoveWorkout={handleMoveWorkout}
                                 onSyncStrava={handleSyncStrava}
                                 isSyncing={isSyncing}
                                 calendarDate={calendarDate}

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Plus, BedDouble, Layers, Trophy, Target, X } from 'lucide-react';
 import type { Workout, Objective } from '@/lib/data/DatabaseTypes';
-import { WorkoutBadge } from './WorkoutBadge';
+import { formatDateKey } from '@/lib/utils';
+import { WorkoutBadge, WORKOUT_DND_MIME } from './WorkoutBadge';
 import { WorkoutPopover } from './WorkoutPopover';
 
 interface DayCellProps {
@@ -13,6 +14,7 @@ interface DayCellProps {
     onOpenManualModal: (e: React.MouseEvent, date: Date) => void;
     onViewWorkout: (workout: Workout) => void;
     onEditObjective: (obj: Objective) => void;
+    onMoveWorkout: (workoutId: string, newDateStr: string) => Promise<void> | void;
 }
 
 export function DayCell({
@@ -24,8 +26,41 @@ export function DayCell({
     onOpenManualModal,
     onViewWorkout,
     onEditObjective,
+    onMoveWorkout,
 }: DayCellProps) {
     const [showPopover, setShowPopover] = useState(false);
+    const [isDragOver, setIsDragOver] = useState(false);
+
+    const dateKey = formatDateKey(date);
+
+    // --- Zone de dépôt (drag & drop) : on n'accepte que les séances déplacées ---
+    const handleDragOver = (e: React.DragEvent) => {
+        if (!e.dataTransfer.types.includes(WORKOUT_DND_MIME)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        if (!isDragOver) setIsDragOver(true);
+    };
+
+    const handleDragLeave = (e: React.DragEvent) => {
+        // On ignore les changements de cible internes (survol d'un enfant).
+        if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+        setIsDragOver(false);
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        setIsDragOver(false);
+        const raw = e.dataTransfer.getData(WORKOUT_DND_MIME);
+        if (!raw) return;
+        e.preventDefault();
+        try {
+            const { id, date: sourceDate } = JSON.parse(raw) as { id: string; date: string };
+            // Pas de déplacement si on relâche sur le jour d'origine.
+            if (!id || sourceDate === dateKey) return;
+            onMoveWorkout(id, dateKey);
+        } catch {
+            // payload invalide : on ignore silencieusement
+        }
+    };
 
     // Calcul pour le style multi-séances
     const hasMultiple = workouts.length > 1;
@@ -36,6 +71,9 @@ export function DayCell({
 
     return (
         <div
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
             className={`
         relative group flex flex-col
         min-h-[140px] p-2
@@ -43,6 +81,7 @@ export function DayCell({
         transition-all duration-200
         ${!isCurrentMonth ? 'bg-slate-50/50 dark:bg-slate-950/30' : ''}
         ${isToday ? 'bg-blue-50/80 dark:bg-blue-900/5' : ''}
+        ${isDragOver ? 'ring-2 ring-inset ring-blue-500/70 bg-blue-50 dark:bg-blue-500/10' : ''}
         hover:bg-slate-50 dark:hover:bg-slate-800/40
       `}
         >
@@ -111,6 +150,7 @@ export function DayCell({
                             workout={workouts[0]}
                             onClick={() => onViewWorkout(workouts[0])}
                             isCompact={false}
+                            enableDrag
                         />
                     </div>
                 )}
@@ -160,6 +200,7 @@ export function DayCell({
                                     workouts={workouts}
                                     onClose={() => setShowPopover(false)}
                                     onViewWorkout={onViewWorkout}
+                                    enableDrag
                                 />
                             </div>
                         )}
