@@ -731,7 +731,9 @@ export const WorkoutDetailView: React.FC<WorkoutDetailViewProps> = ({
         try {
             await onUpdate(workout.id, status, feedback);
             setIsCompleting(false); setIsEditing(false);
-            if (status === 'pending' && isCompleted) onClose();
+            // Retour au calendrier après un changement de statut simple
+            // (repasser en attente depuis "fait", ou marquer comme raté)
+            if ((status === 'pending' && isCompleted) || status === 'missed') onClose();
         } catch (e) { console.error(e); }
         finally { setIsMutating(false); }
     };
@@ -802,8 +804,8 @@ export const WorkoutDetailView: React.FC<WorkoutDetailViewProps> = ({
                         )}
                     </div>
 
-                    {/* Quick planned stats (for pending only, inline in header) */}
-                    {isPending && planned && (
+                    {/* Quick planned stats (pending + missed, inline in header) */}
+                    {(isPending || isMissed) && planned && (
                         <div className="flex items-center gap-4 mt-4 pt-3 border-t border-slate-200/60 dark:border-slate-700/40">
                             {planned.durationMinutes && (
                                 <div className="flex items-center gap-1.5 text-sm">
@@ -899,8 +901,9 @@ export const WorkoutDetailView: React.FC<WorkoutDetailViewProps> = ({
 
             {/* ═══════════════════════════════════════════════════
                 PLANNED / PENDING VIEW
+                (affiché aussi pour une séance ratée : on garde le contenu prévu)
             ═══════════════════════════════════════════════════ */}
-            {isPending && <PlannedStructure workout={workout} />}
+            {(isPending || isMissed) && <PlannedStructure workout={workout} />}
 
             {/* ═══════════════════════════════════════════════════
                 ACTIONS
