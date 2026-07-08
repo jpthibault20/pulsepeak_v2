@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 
 // Import des Server Actions (par sous-module schedule)
 import { saveAthleteProfile, loadInitialData, type ActivePlanSummary } from '@/app/actions/schedule/profile';
@@ -197,6 +197,28 @@ export default function AppClientWrapper({ initialProfile, initialSchedule, init
         });
         setSelectedWorkout(workout);
     }, []);
+
+    // Liste des séances ordonnée chronologiquement (id en départage déterministe)
+    // pour la navigation séance précédente / suivante depuis la vue détail.
+    const orderedWorkouts = useMemo(() => {
+        if (!schedule) return [] as Workout[];
+        return [...schedule.workouts].sort(
+            (a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id)
+        );
+    }, [schedule]);
+
+    const selectedWorkoutIndex = useMemo(
+        () => (selectedWorkout ? orderedWorkouts.findIndex(w => w.id === selectedWorkout.id) : -1),
+        [orderedWorkouts, selectedWorkout]
+    );
+
+    const handleNavigateWorkout = useCallback((direction: 'prev' | 'next') => {
+        if (selectedWorkoutIndex === -1) return;
+        const target = orderedWorkouts[selectedWorkoutIndex + (direction === 'prev' ? -1 : 1)];
+        if (!target) return;
+        setSelectedWorkout(target);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, [orderedWorkouts, selectedWorkoutIndex]);
 
     // --- Plan Generation Handlers ---
     // Logique de génération réelle, séparée du gate de confirmation : on l'appelle
@@ -639,6 +661,9 @@ export default function AppClientWrapper({ initialProfile, initialSchedule, init
                                 onDelete={handleDeleteWorkout}
                                 onRegenerate={handleRegenerateWorkout}
                                 onRefresh={refreshData}
+                                onNavigate={handleNavigateWorkout}
+                                hasPrev={selectedWorkoutIndex > 0}
+                                hasNext={selectedWorkoutIndex !== -1 && selectedWorkoutIndex < orderedWorkouts.length - 1}
                             />
                         </div>
                     )}
