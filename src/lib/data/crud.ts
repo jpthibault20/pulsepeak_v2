@@ -545,6 +545,21 @@ export async function deleteWorkoutById(workoutId: string): Promise<void> {
 }
 
 /**
+ * Supprime un plan par ID (scopé à l'utilisateur authentifié).
+ * Les blocs → semaines → séances liés sont supprimés en cascade au niveau DB
+ * (FK `onDelete: 'cascade'`).
+ */
+export async function deletePlanById(planId: string): Promise<void> {
+    const userId = await getCurrentUserId();
+    await db.delete(plansTable).where(
+        and(
+            eq(plansTable.userId, userId),
+            eq(plansTable.id, planId)
+        )
+    );
+}
+
+/**
  * Supprime plusieurs séances en un seul DELETE. À utiliser quand on remplace
  * un lot de séances (ex. régénération d'une semaine) pour éviter le coût O(N)
  * de la réécriture complète via `saveWorkout`.
