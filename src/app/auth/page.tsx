@@ -126,8 +126,11 @@ export default function AuthPage() {
             setIsLoading(false);
             return;
         }
-        router.push('/');
-        router.refresh();
+        // Navigation de document complète (pas router.push) : sur iOS en PWA
+        // standalone, seuls les cookies posés sur une réponse de navigation
+        // top-level sont persistés de façon fiable après un kill de l'app.
+        // Le proxy ré-émet les cookies sb-* sur cette réponse (keepalive).
+        window.location.assign('/');
     };
 
     const handleRegister = async (e: React.FormEvent) => {
@@ -153,10 +156,10 @@ export default function AuthPage() {
             setIsLoading(false);
             return;
         }
-        // Session immédiate (pas de confirmation email) : profil créé côté serveur, rediriger.
+        // Session immédiate (pas de confirmation email) : profil créé côté serveur.
+        // Navigation complète pour persister les cookies (cf. handleLogin).
         if (!result.needsEmailConfirmation) {
-            router.push('/');
-            router.refresh();
+            window.location.assign('/');
             return;
         }
         // Confirmation email requise → afficher le message + option de renvoi après le cooldown

@@ -55,8 +55,10 @@ export default function ResetPasswordPage() {
         }
 
         setSuccess(true);
-        // Redirection automatique vers l'app après 2 secondes
-        setTimeout(() => router.push('/'), 2000);
+        // Redirection automatique vers l'app après 2 secondes.
+        // Navigation complète : la session issue du lien email a été posée via
+        // document.cookie ; le passage par le proxy la ré-émet en Set-Cookie.
+        setTimeout(() => window.location.assign('/'), 2000);
     };
 
     if (isVerifying) {
