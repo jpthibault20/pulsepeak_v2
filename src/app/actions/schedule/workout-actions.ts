@@ -141,7 +141,17 @@ export async function moveWorkout(workoutId: string, newDateStr: string) {
         ]);
     } else {
         // --- CAS PENDING / MISSED : déplacement simple ---
-        await updateWorkoutById(sourceWorkout.id, { date: newDateStr });
+        // Si une séance "missed" est déplacée vers le futur (aujourd'hui ou plus
+        // tard, fuseau Europe/Paris), on la réinitialise en "pending" : elle
+        // redevient une séance à venir et son contenu planifié est de nouveau
+        // accessible.
+        const todayParis = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Paris' }));
+        const todayStr = `${todayParis.getFullYear()}-${String(todayParis.getMonth() + 1).padStart(2, '0')}-${String(todayParis.getDate()).padStart(2, '0')}`;
+        const resetMissed = sourceWorkout.status === 'missed' && newDateStr >= todayStr;
+        await updateWorkoutById(sourceWorkout.id, {
+            date: newDateStr,
+            ...(resetMissed ? { status: 'pending' } : {}),
+        });
     }
 
     revalidatePath('/');

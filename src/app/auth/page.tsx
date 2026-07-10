@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Activity, Eye, EyeOff, Loader2, AlertCircle, CheckCircle2, ArrowRight, Mail, RefreshCw } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { createInitialProfile } from '@/app/actions/auth';
+import { login, register } from '@/app/actions/auth';
 import Image from 'next/image';
 
 
@@ -113,29 +113,16 @@ export default function AuthPage() {
             return;
         }
         setIsLoading(true);
-        const { error, data } = await supabase.auth.signInWithPassword({
-            email: loginEmail,
-            password: loginPassword,
-        });
-        if (error) {
-            // Supabase renvoie cette erreur si l'email n'est pas confirmé
-            if (error.message.toLowerCase().includes('email not confirmed')) {
-                setError('Votre adresse email n\'a pas encore été vérifiée.');
+        // Connexion via Server Action : les cookies de session sont posés par le
+        // serveur (Set-Cookie), seule méthode fiable pour persister la session
+        // sur iOS en mode app installée (PWA).
+        const result = await login(loginEmail, loginPassword);
+        if (result.error) {
+            setError(result.error);
+            if (result.needsEmailConfirmation) {
                 setResendEmail(loginEmail);
                 setShowResend(true);
-            } else {
-                setError(error.message === 'Invalid login credentials'
-                    ? 'Email ou mot de passe incorrect.'
-                    : error.message);
             }
-            setIsLoading(false);
-            return;
-        }
-        // Vérifier si l'email est confirmé (cas où Supabase laisse se connecter sans confirmation)
-        if (data.user && !data.user.email_confirmed_at) {
-            setError('Votre adresse email n\'a pas encore été vérifiée.');
-            setResendEmail(loginEmail);
-            setShowResend(true);
             setIsLoading(false);
             return;
         }
@@ -160,21 +147,14 @@ export default function AuthPage() {
             return;
         }
         setIsLoading(true);
-        const { data, error } = await supabase.auth.signUp({
-            email: registerEmail,
-            password: registerPassword,
-            options: {
-                data: { first_name: firstName, last_name: lastName },
-            },
-        });
-        if (error) {
-            setError(error.message);
+        const result = await register(firstName, lastName, registerEmail, registerPassword);
+        if (result.error) {
+            setError(result.error);
             setIsLoading(false);
             return;
         }
-        // Si session immédiate (pas de confirmation email), créer le profil puis rediriger.
-        if (data.session && data.user) {
-            await createInitialProfile(data.user.id, firstName, lastName, registerEmail);
+        // Session immédiate (pas de confirmation email) : profil créé côté serveur, rediriger.
+        if (!result.needsEmailConfirmation) {
             router.push('/');
             router.refresh();
             return;

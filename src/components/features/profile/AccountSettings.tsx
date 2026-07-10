@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Lock, LogOut, CheckCircle2, AlertCircle, Loader2, BookOpen } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { logout } from '@/app/actions/auth';
 import { resetTutorial } from '@/components/features/tutorial/TutorialOverlay';
 
 interface AccountSettingsProps {
@@ -54,8 +55,10 @@ export function AccountSettings({ stravaWriteBack = true, onStravaWriteBackChang
 
     const handleLogout = async () => {
         setIsLoggingOut(true);
-        await supabase.auth.signOut();
+        // Déconnexion via Server Action : supprime les cookies posés côté serveur
+        await logout();
         router.push('/auth');
+        router.refresh();
     };
 
     return (

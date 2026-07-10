@@ -4,12 +4,14 @@ import React, { useEffect, useState, useCallback } from 'react';
 import {
     Calendar, ChevronDown, ChevronUp, Bike, Footprints, Waves, Activity,
     Loader2, AlertCircle, Sparkles, Trophy, TrendingUp, Clock, CheckCircle2,
-    MessageSquare, RotateCcw, Flag, X,
+    MessageSquare, RotateCcw, Flag, X, Settings2,
 } from 'lucide-react';
 import { getPlanOverview, type PlanOverviewData, type PlanOverviewBlock, type PlanOverviewWeek } from '@/app/actions/schedule/plan-overview';
 import { generateWeekWorkoutsFromDate } from '@/app/actions/schedule/week-actions';
 import { WeekGenerationProgressModal, type WeekGenProgressState } from '@/components/features/calendar/WeekGenerationProgressModal';
 import { GenerationModal } from '@/components/features/calendar/GenerationModal';
+import { PlanManageModal } from '@/components/features/plan/PlanManageModal';
+import { Button } from '@/components/ui/Button';
 import type { Objective, Profile } from '@/lib/data/DatabaseTypes';
 import type { AvailabilitySlot } from '@/lib/data/type';
 import { FeatureGate } from '@/components/features/billing/FeatureGate';
@@ -55,6 +57,7 @@ export function PlanView({ profile, objectives: userObjectives, onRefresh, onVie
     const [loading, setLoading] = useState(true);
     const [expandedBlock, setExpandedBlock] = useState<string | null>(null);
     const [regenTarget, setRegenTarget] = useState<{ blockId: string; weekId?: string } | null>(null);
+    const [managing, setManaging] = useState(false);
     const [weekGenProgress, setWeekGenProgress] = useState<WeekGenProgressState>({
         active: false, minimized: false, done: false, error: null, startedAt: 0, weekLabel: '',
     });
@@ -99,6 +102,13 @@ export function PlanView({ profile, objectives: userObjectives, onRefresh, onVie
 
     return (
         <div className="space-y-5 animate-in fade-in duration-300">
+
+            {/* ── Action bar ────────────────────────────────── */}
+            <div className="flex justify-end">
+                <Button variant="primary" icon={Settings2} onClick={() => setManaging(true)}>
+                    Gérer le plan
+                </Button>
+            </div>
 
             {/* ── Header ────────────────────────────────────── */}
             <div className="bg-white dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5">
@@ -207,6 +217,22 @@ export function PlanView({ profile, objectives: userObjectives, onRefresh, onVie
                     onClose={() => setRegenTarget(null)}
                     onDone={() => { setRegenTarget(null); load(); onRefresh(); }}
                     onSetProgress={setWeekGenProgress}
+                />
+            )}
+
+            {/* ── Manage Plan Modal ────────────────────────────── */}
+            {managing && (
+                <PlanManageModal
+                    isOpen={managing}
+                    plan={{
+                        id: plan.id,
+                        name: plan.name,
+                        startDate: plan.startDate,
+                        goalDate: plan.goalDate ?? '',
+                        macroStrategyDescription: plan.macroStrategyDescription ?? '',
+                    }}
+                    onClose={() => setManaging(false)}
+                    onDone={() => { setManaging(false); load(); onRefresh(); }}
                 />
             )}
 

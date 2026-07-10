@@ -2,6 +2,8 @@ import { Profile } from "../data/DatabaseTypes";
 import { CoachType, SportType } from "../data/type";
 import { Workout } from "../data/DatabaseTypes";
 import { structureSessionDescription } from "./structure-session";
+import { classifySessionType } from "../stats/classifySession";
+import { computeDeviationMetrics } from "../stats/computeDeviation";
 
 // ─── Coach persona ────────────────────────────────────────────────────────────
 // Role injecté en tête des prompts IA selon le coach choisi par l'athlète.
@@ -643,6 +645,13 @@ export async function generateWorkoutSummary(
     const experience = profile.experience ?? 'Intermédiaire';
     const hasPlanned = planned && (planned.durationMinutes || planned.plannedTSS || planned.targetPowerWatts);
 
+    // Stimulus réellement effectué — calculé à l'import, fallback à la lecture
+    // pour les séances anciennes/manuelles sans le champ persisté.
+    const detectedType = cd.detectedType ?? classifySessionType(cd, sport, profile);
+
+    // Étape 1 (pur calcul) : écart planifié vs réalisé. Alimente le 2e temps de l'analyse.
+    const deviation = hasPlanned ? computeDeviationMetrics(workout, profile) : null;
+
     // ── Métriques de base ──────────────────────────────────
     let metricsStr = `Durée: ${cd.actualDurationMinutes}min, Distance: ${cd.distanceKm}km`;
     if (cd.heartRate?.avgBPM) metricsStr += `, FC moy: ${cd.heartRate.avgBPM}bpm`;
@@ -662,12 +671,19 @@ export async function generateWorkoutSummary(
         if (r.elevationGainMeters) metricsStr += `, D+: ${r.elevationGainMeters}m`;
     }
 
-    // ── Distribution zones FC (quel stimulus réel) ─────────
+    // ── Distribution en zones (quel stimulus réel) ─────────
+    // Priorité au champ top-level (puissance vélo calculée à l'import), fallback
+    // sur l'ancienne distribution FC si présente.
     let zonesStr = "";
-    if (cd.heartRate?.zoneDistribution && cd.heartRate.zoneDistribution.length >= 3) {
-        const z = cd.heartRate.zoneDistribution;
-        const zoneNames = ['Z1 Récup', 'Z2 Endurance', 'Z3 Tempo', 'Z4 Seuil', 'Z5 VO2max'];
-        zonesStr = "\nDISTRIBUTION ZONES FC: " + z.slice(0, 5).map((pct, i) =>
+    const zoneDist = (cd.zoneDistribution && cd.zoneDistribution.length >= 3)
+        ? cd.zoneDistribution
+        : (cd.heartRate?.zoneDistribution && cd.heartRate.zoneDistribution.length >= 3)
+            ? cd.heartRate.zoneDistribution
+            : null;
+    if (zoneDist) {
+        const refLabel = cd.zoneDistributionSource === 'power' ? 'PUISSANCE' : 'FC';
+        const zoneNames = ['Z1 Récup', 'Z2 Endurance', 'Z3 Tempo', 'Z4 Seuil', 'Z5 VO2max', 'Z6 Anaéro', 'Z7 Neuro'];
+        zonesStr = `\nDISTRIBUTION ZONES ${refLabel}: ` + zoneDist.map((pct, i) =>
             `${zoneNames[i] ?? `Z${i + 1}`}: ${Math.round(pct)}%`
         ).join(', ');
     }
@@ -719,7 +735,8 @@ export async function generateWorkoutSummary(
         const lapsToShow = cd.laps.length > 6 ? cd.laps.slice(0, 6) : cd.laps;
         lapsStr = `\nLAPS (${cd.laps.length}):\n` + lapsToShow.map(l => {
             let s = `- ${l.name}: ${Math.round(l.durationSeconds / 60)}min`;
-            if (l.avgPower) s += `, ${l.avgPower}W`;
+            if (l.avgPower) s += `, ${l.avgPower}W moy`;
+            if (l.maxPower) s += `/${l.maxPower}W max`;
             if (l.avgHeartRate) s += `, ${l.avgHeartRate}bpm`;
             return s;
         }).join('\n');
@@ -755,20 +772,23 @@ export async function generateWorkoutSummary(
 - Utilise le vocabulaire technique quand il apporte de la précision`,
     };
 
-    const workoutTypeInstructions = hasPlanned
-        ? `TYPE: SÉANCE PLANIFIÉE avec cibles.
-Ce qui compte : la QUALITÉ D'EXÉCUTION, pas juste "tu as fait X vs Y".
-- Régularité des intervalles (fade rate = baisse du 1er au dernier)
-- Gestion des récupérations entre efforts
-- Couplage puissance/FC (si la FC dérive alors que les watts sont stables, l'effort réel était plus dur)
-- Si RPE bas et métriques sous les cibles : l'athlète a choisi de rouler facile, ne dis pas "fatigue"
-- Si RPE élevé et métriques sous les cibles : vraie difficulté, quelque chose a limité la perf`
-        : `TYPE: SORTIE LIBRE (pas de cibles planifiées).
-Ce qui compte : identifier le STIMULUS RÉEL de la sortie — ce que le sportif a travaillé, même sans le savoir.
-- Utilise la distribution des zones FC pour dire quel système a été sollicité (endurance, tempo, seuil...)
-- Si le sportif pensait rouler "tranquille" mais a passé du temps en Z3+, dis-le — c'est de la charge non prévue
-- Identifie un pattern dans les laps si visible (départs trop forts en côte, effort en yoyo sur le plat)
-- Indique si cette sortie était plutôt un stimulus d'endurance, de tempo, ou un mix`;
+    const deviationContext = deviation
+        ? `${deviation.headline || 'Globalement conforme aux cibles'}${deviation.details.length ? ` — ${deviation.details.slice(0, 3).join(' ; ')}` : ''}`
+        : null;
+
+    const analysisInstructions = `MÉTHODE EN DEUX TEMPS — respecte cet ordre.
+
+TEMPS 1 — LA SÉANCE RÉALISÉE (ce qui a VRAIMENT été fait, indépendamment du plan)
+- Le stimulus réel détecté est : "${detectedType}". Appuie-toi dessus. Ne dis JAMAIS "endurance" si ce type indique autre chose.
+- Révèle ce que les moyennes cachent : distribution en zones, variabilité (effort lisse vs yoyo), pics des laps (moy vs max).
+- Qualité d'exécution : régularité des intervalles (fade rate), gestion des récups, couplage puissance/FC (FC qui dérive à watts stables = effort réel plus dur).
+
+TEMPS 2 — ${hasPlanned ? 'COMPARAISON AU PLAN + AVIS COACH' : 'AVIS COACH'}
+${hasPlanned
+            ? `- Compare le réalisé au prévu${deviationContext ? ` (écart calculé : ${deviationContext})` : ''}.
+- Si RPE bas + métriques sous les cibles : choix volontaire, ne dis pas "fatigue". Si RPE élevé + sous les cibles : vraie difficulté, quelque chose a limité la perf.
+- Termine par UN conseil de coach actionnable pour la suite.`
+            : `- Pas de cibles planifiées : dis si ce stimulus tombe au bon moment et donne UN conseil de coach pour capitaliser.`}`;
 
     const systemPrompt = `Tu t'adresses directement au sportif (tutoiement). Texte brut, sans HTML ni markdown.
 
@@ -778,17 +798,19 @@ RÈGLE D'OR: Ne reformule JAMAIS les chiffres que le sportif peut lire lui-même
 
 ${levelInstructions[experience] ?? levelInstructions['Intermédiaire']}
 
-${workoutTypeInstructions}
+${analysisInstructions}
 
 FORMAT STRICT:
-- 2-3 phrases, 3-4 lignes max à l'écran. C'est affiché sur mobile.
+- DEUX temps dans le texte : d'abord la séance réalisée, puis (nouvelle ligne) le verdict vs plan / l'avis coach. Sépare-les par un seul saut de ligne.
+- Très concis : ~2 phrases par temps, 5-6 lignes max à l'écran (affiché sur mobile).
 - Texte brut UNIQUEMENT. AUCUN HTML (<b>, <br>, <strong>), aucun markdown (**, ##)
-- Pas de bullet points, pas de listes — un texte fluide
+- Pas de bullet points, pas de listes — deux courts paragraphes fluides
 - Ne répète pas les métriques brutes que le sportif peut lire au-dessus
 - Réponds en français`;
 
     const userPrompt = `SÉANCE: ${workout.title} (${sport}, ${workout.workoutType})
 DATE: ${workout.date}
+STIMULUS RÉEL DÉTECTÉ: ${detectedType}
 ${ftp ? `FTP: ${ftp}W` : ''}
 RÉALISÉ: ${metricsStr}${zonesStr}${stabilityStr}${advancedStr}${lapsStr}${plannedStr}`;
 
@@ -801,7 +823,7 @@ RÉALISÉ: ${metricsStr}${zonesStr}${stabilityStr}${advancedStr}${lapsStr}${plan
     const payload = {
         contents: [{ parts: [{ text: userPrompt }] }],
         systemInstruction: { parts: [{ text: systemPrompt }] },
-        generationConfig: { responseMimeType: "application/json", responseSchema, temperature: 0.6, maxOutputTokens: 200 },
+        generationConfig: { responseMimeType: "application/json", responseSchema, temperature: 0.6, maxOutputTokens: 320 },
     };
 
     const { data, tokensUsed } = await callGeminiAPI(payload);

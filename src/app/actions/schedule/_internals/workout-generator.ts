@@ -52,6 +52,11 @@ export async function CreateWorkoutForWeek(
     weekObjectives?: Objective[],
 ): Promise<Workout[]>
 {
+    // [TIMING] Instrumentation temporaire pour calibrer les étapes de la progress bar
+    const tStart = performance.now();
+    const ms = (from: number) => Math.round(performance.now() - from);
+
+    const tPrep0 = performance.now();
     const weekStartDate = addDays(parseLocalDate(block.startDate), (week.weekNumber - 1) * 7);
     const activeSports = getActiveSports(profile.activeSports);
     const formattedAvailability = formatAvailability(weeklyAvailability);
@@ -375,6 +380,9 @@ Chaque objet contient exactement :
         },
     };
 
+    console.log(`[week-gen:AI] a) prep (taper+prevWeek+zones+prompt): ${ms(tPrep0)}ms — prompt ${aiPrompt.length} chars`);
+
+    const tCall10 = performance.now();
     const { data: rawWorkouts, tokensUsed: tokensWorkouts } = await callGeminiAPI({
         contents: [{ parts: [{ text: aiPrompt }] }],
         generationConfig: {
@@ -384,10 +392,12 @@ Chaque objet contient exactement :
             responseSchema,
         },
     });
+    console.log(`[week-gen:AI] b) Gemini appel principal: ${ms(tCall10)}ms — ${tokensWorkouts} tokens`);
     await atomicIncrementTokenCount(tokensWorkouts);
     if (!Array.isArray(rawWorkouts)) throw new Error('Réponse IA invalide : tableau attendu.');
 
     // ── Validation post-IA : filtrer / capper les séances hors programme ──
+    const tFilter0 = performance.now();
     const allowedSlots = buildAllowedSlots(weeklyAvailability, activeSports);
     const aiResponse = (rawWorkouts as AIWorkout[]).filter((w) => {
         const taperInfo = taperPlan.get(w.dayOffset);
@@ -423,9 +433,12 @@ Chaque objet contient exactement :
         return true;
     });
 
+    console.log(`[week-gen:AI] c) filtre/validation: ${ms(tFilter0)}ms — ${aiResponse.length}/${rawWorkouts.length} séances retenues`);
+
     // Structuration en parallèle des descriptions via un second appel IA.
     // La fonction renvoie un PlannedData complet (cibles top-level + structure).
     // Échec individuel → PlannedData minimal (description conservée, structure: []).
+    const tCall20 = performance.now();
     const structuredWorkouts = await Promise.all(
         aiResponse.map(async (w) => {
             const { plannedData, tokensUsed } = await structureSessionDescription({
@@ -438,9 +451,11 @@ Chaque objet contient exactement :
             return { w, plannedData, tokensUsed };
         })
     );
-
     const totalStructureTokens = structuredWorkouts.reduce((s, x) => s + x.tokensUsed, 0);
+    console.log(`[week-gen:AI] d) Gemini structuration (${aiResponse.length} appels //): ${ms(tCall20)}ms — ${totalStructureTokens} tokens`);
+
     if (totalStructureTokens > 0) await atomicIncrementTokenCount(totalStructureTokens);
+    console.log(`[week-gen:AI] ✓ CreateWorkoutForWeek TOTAL: ${ms(tStart)}ms`);
 
     return structuredWorkouts.map(({ w, plannedData }) => {
         const workoutDate = addDays(weekStartDate, w.dayOffset);

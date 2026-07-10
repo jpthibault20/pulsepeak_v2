@@ -11,6 +11,7 @@ interface CalendarContextValue {
     onEditObjective: (obj: Objective) => void;
     onRefresh: () => void;
     onOpenGenModal: () => void;
+    onMoveWorkout: (workoutId: string, newDateStr: string) => Promise<void> | void;
 }
 
 const CalendarContext = createContext<CalendarContextValue | null>(null);
