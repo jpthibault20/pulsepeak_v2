@@ -148,6 +148,13 @@ export interface CompletedData {
   intensityFactor?: number; // IF utilisé pour le calcul (NP/FTP, NGP/seuil, etc.)
   variabilityIndex?: number; // VI (NP / Avg Power) - utile pour voir si la séance était stable
 
+  // Stimulus réel classifié de la séance (Endurance, Seuil, VO2max, Intervalles…).
+  // Calculé à l'import via classifySessionType (pur calcul, sans IA).
+  detectedType?: string;
+  // Répartition du temps par zone (% Z1, Z2…) et la métrique de référence utilisée.
+  zoneDistribution?: number[];
+  zoneDistributionSource?: 'power' | 'hr' | 'pace';
+
   // Métriques de déviation planifié vs réalisé
   deviation?: DeviationMetrics;
 }
@@ -196,6 +203,7 @@ export interface CompletedLap {
   durationSeconds: number;
   distanceMeters: number;
   avgPower?: number | null;
+  maxPower?: number | null;        // Pic de puissance du lap (calculé depuis le stream) — révèle les intervalles que la moyenne masque
   normalizedPower?: number | null; // Très utile sur des efforts longs
   avgHeartRate?: number | null;
   maxHeartRate?: number | null;

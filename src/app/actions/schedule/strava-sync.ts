@@ -275,7 +275,8 @@ export async function syncStravaActivities(forceFull = false) {
                     date: activityDate,
                     sportType,
                     title: detail.name,
-                    workoutType: 'Sortie Libre',
+                    // Type réellement effectué (classifié à l'import), fallback "Sortie Libre".
+                    workoutType: completedData.detectedType ?? 'Sortie Libre',
                     mode: 'Outdoor',
                     status: 'completed',
                     plannedData: {

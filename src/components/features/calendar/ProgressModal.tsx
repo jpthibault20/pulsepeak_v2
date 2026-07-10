@@ -7,7 +7,15 @@ import { Check, Loader2, Minus, ChevronUp } from 'lucide-react';
 
 export interface ProgressStage {
     label: string;
+    /** Cible visuelle atteinte à la fin de cette étape (0-100). */
     progressAt: number;
+    /**
+     * Durée réelle attendue de l'étape en ms (mesurée en prod).
+     * Si fourni pour toutes les étapes, la barre progresse linéairement dans
+     * chaque tranche en fonction de son poids réel — bien plus fidèle qu'un
+     * ease-out temporel. Fallback : `ProgressModalConfig.durationMs`.
+     */
+    expectedMs?: number;
 }
 
 export interface ProgressState {
@@ -29,6 +37,7 @@ export interface ProgressModalConfig {
     miniLabelLoading: string;
     miniLabelDone: string;
     stages: ProgressStage[];
+    /** Fallback si les étapes n'ont pas de `expectedMs` (mode legacy ease-out). */
     durationMs: number;
 }
 
@@ -42,13 +51,71 @@ interface ProgressModalProps {
 
 // ─── Progress animation hook ──────────────────────────────────────────────────
 
-const MAX_AUTO = 93;
+/** Plafond absolu — 100% reste réservé à `state.done`. */
+const MAX_AUTO = 98;
 
-function useAnimatedProgress(active: boolean, done: boolean, startedAt: number, durationMs: number) {
+/**
+ * Calcule la progression à partir des durées réelles attendues par étape.
+ * - Dans les temps : interpolation linéaire à travers les tranches
+ *   (chaque étape occupe `progressAt` proportionnellement à son `expectedMs`).
+ * - Au-delà du total attendu : creep asymptotique vers `MAX_AUTO` — la barre
+ *   ne se fige jamais, elle rampe de plus en plus lentement.
+ */
+function computeStagedProgress(elapsed: number, stages: ProgressStage[]): number {
+    const totalMs = stages.reduce((s, x) => s + (x.expectedMs ?? 0), 0);
+    if (totalMs <= 0 || stages.length === 0) return 0;
+
+    if (elapsed <= totalMs) {
+        let acc = 0;
+        let prevProgress = 0;
+        for (const stage of stages) {
+            const stageMs = stage.expectedMs ?? 0;
+            const stageEnd = acc + stageMs;
+            if (elapsed <= stageEnd) {
+                const t = stageMs > 0 ? (elapsed - acc) / stageMs : 1;
+                return prevProgress + t * (stage.progressAt - prevProgress);
+            }
+            acc = stageEnd;
+            prevProgress = stage.progressAt;
+        }
+        return prevProgress;
+    }
+
+    // Overshoot : creep exponentiel. tau = totalMs/2 → ~86% du gap absorbé
+    // après une durée équivalente au total prévu.
+    const lastProgress = stages[stages.length - 1].progressAt;
+    const overshoot = elapsed - totalMs;
+    const tau = totalMs / 2;
+    const t = 1 - Math.exp(-overshoot / tau);
+    return lastProgress + t * (MAX_AUTO - lastProgress);
+}
+
+function computeEasedProgress(elapsed: number, durationMs: number): number {
+    const linear = Math.min(elapsed / durationMs, 1);
+    const eased = 1 - Math.pow(1 - linear, 2.2);
+    return Math.min(eased * MAX_AUTO, MAX_AUTO);
+}
+
+function useAnimatedProgress(
+    active: boolean,
+    done: boolean,
+    startedAt: number,
+    stages: ProgressStage[],
+    durationMs: number,
+) {
     const [progress, setProgress] = useState(() => done ? 100 : 0);
     const [prevActive, setPrevActive] = useState(active);
     const [prevDone, setPrevDone] = useState(done);
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    // Latest values pour le closure de l'interval — évite de reset l'interval
+    // à chaque re-render (config est un objet littéral chez l'appelant).
+    const stagesRef = useRef(stages);
+    const durationRef = useRef(durationMs);
+    useEffect(() => {
+        stagesRef.current = stages;
+        durationRef.current = durationMs;
+    });
 
     // Reset à 0 quand active passe de true à false
     if (prevActive && !active) {
@@ -66,26 +133,28 @@ function useAnimatedProgress(active: boolean, done: boolean, startedAt: number, 
         setPrevDone(done);
     }
 
-    // Lance l'animation quand active est true
     useEffect(() => {
         if (!active || done) {
             if (intervalRef.current) clearInterval(intervalRef.current);
             return;
         }
-
         if (intervalRef.current) clearInterval(intervalRef.current);
 
         intervalRef.current = setInterval(() => {
             const elapsed = Date.now() - startedAt;
-            const linear = Math.min(elapsed / durationMs, 1);
-            const eased = 1 - Math.pow(1 - linear, 2.2);
-            const next = Math.min(eased * MAX_AUTO, MAX_AUTO);
-            setProgress(next);
-            if (elapsed >= durationMs) clearInterval(intervalRef.current!);
-        }, 80);
+            const currentStages = stagesRef.current;
+            const hasWeights = currentStages.length > 0
+                && currentStages.every(s => typeof s.expectedMs === 'number' && (s.expectedMs ?? 0) > 0);
+            const next = hasWeights
+                ? computeStagedProgress(elapsed, currentStages)
+                : computeEasedProgress(elapsed, durationRef.current);
+            setProgress(Math.min(next, MAX_AUTO));
+            // Pas de clearInterval sur "durée dépassée" : le creep asymptotique
+            // continue de faire avancer la barre jusqu'à `done=true`.
+        }, 100);
 
         return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-    }, [active, done, startedAt, durationMs]);
+    }, [active, done, startedAt]);
 
     return progress;
 }
@@ -93,11 +162,18 @@ function useAnimatedProgress(active: boolean, done: boolean, startedAt: number, 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ProgressModal({ state, config, onMinimize, onRestore, onClose }: ProgressModalProps) {
-    const progress = useAnimatedProgress(state.active, state.done, state.startedAt, config.durationMs);
-    const stageIndex = state.done
-        ? config.stages.length - 1
-        : config.stages.findLastIndex(s => progress >= s.progressAt);
-    const activeIdx = Math.max(0, stageIndex);
+    const progress = useAnimatedProgress(state.active, state.done, state.startedAt, config.stages, config.durationMs);
+
+    // `progressAt` = fin de l'étape (là où la barre arrive quand l'étape se termine).
+    // L'étape active est la PREMIÈRE dont progressAt n'est pas encore atteint.
+    // Dès que progress franchit un progressAt, on bascule instantanément à la suivante.
+    let activeIdx: number;
+    if (state.done) {
+        activeIdx = config.stages.length - 1;
+    } else {
+        const idx = config.stages.findIndex(s => progress < s.progressAt);
+        activeIdx = idx === -1 ? config.stages.length - 1 : idx;
+    }
 
     // Auto-close after done
     useEffect(() => {
@@ -199,8 +275,10 @@ export function ProgressModal({ state, config, onMinimize, onRestore, onClose }:
                 {/* ── Stages list ── */}
                 <div className="px-5 pt-3 pb-5 space-y-2.5">
                     {config.stages.map((stage, i) => {
-                        const isDone = state.done || progress > stage.progressAt + 5 || i < activeIdx;
-                        const isActive = !state.done && !state.error && i === activeIdx && !isDone;
+                        // Transition nette : dès que activeIdx avance, les précédentes
+                        // deviennent done (check) et la nouvelle prend le spinner.
+                        const isDone   = state.done || i < activeIdx;
+                        const isActive = !state.done && !state.error && i === activeIdx;
                         const isPending = !isDone && !isActive;
 
                         return (

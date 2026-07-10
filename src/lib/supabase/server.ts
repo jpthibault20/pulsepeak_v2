@@ -15,7 +15,13 @@ export const createClient = async () => {
                 setAll(cookiesToSet) {
                     try {
                         cookiesToSet.forEach(({ name, value, options }) =>
-                            cookieStore.set(name, value, options)
+                            cookieStore.set(name, value, {
+                                ...options,
+                                secure: process.env.NODE_ENV === 'production',
+                                sameSite: 'lax',
+                                // 400 jours (max autorisé) — sauf suppression (valeur vide = signOut)
+                                maxAge: value ? 400 * 24 * 60 * 60 : 0,
+                            })
                         );
                     } catch {
                         // Ignoré dans les Server Components (lecture seule)

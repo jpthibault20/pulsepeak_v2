@@ -2,6 +2,7 @@ import { CompletedData, SportType } from "@/lib/data/type";
 import { getProfile } from "./data/crud";
 import type { Profile } from "./data/DatabaseTypes";
 import { computeWorkoutTSS, speedKmhToPaceMinPerKm, speedMsToPace100m } from "./stats/computeTSS";
+import { bucketByZones, classifySessionType } from "./stats/classifySession";
 
 // --- DÉFINITION DES TYPES ENTRANTS (STRAVA) ---
 
@@ -21,6 +22,7 @@ interface StravaLapInput {
 
 export interface StravaStream {
   watts?: { data: number[] };
+  heartrate?: { data: number[] };
   time?: { data: number[] };
 }
 
@@ -123,9 +125,11 @@ export async function mapStravaToCompletedData(activity: StravaActivityInput, st
     map: { polyline: activity.map?.summary_polyline || null },
     laps: (activity.laps ?? []).map((lap) => {
       let lapNP: number | null = null;
+      let lapMaxPower: number | null = null;
       if (powerData && lap.start_index != null && lap.end_index != null) {
         const lapWatts = powerData.slice(lap.start_index, lap.end_index + 1);
         lapNP = calculateNP(lapWatts);
+        if (lapWatts.length > 0) lapMaxPower = Math.round(Math.max(...lapWatts));
       }
       return {
         index: lap.lap_index,
@@ -133,6 +137,7 @@ export async function mapStravaToCompletedData(activity: StravaActivityInput, st
         durationSeconds: lap.moving_time,
         distanceMeters: Math.round(lap.distance),
         avgPower: lap.average_watts ?? null,
+        maxPower: lapMaxPower,
         normalizedPower: lapNP,
         avgHeartRate: lap.average_heartrate ?? null,
         maxHeartRate: lap.max_heartrate ?? null,
@@ -194,6 +199,44 @@ export async function mapStravaToCompletedData(activity: StravaActivityInput, st
   completed.calculatedTSS = tssResult.tss;
   completed.tssSource = tssResult.source;
   if (tssResult.intensityFactor != null) completed.intensityFactor = tssResult.intensityFactor;
+
+  // --- SIGNAUX D'ANALYSE (VI, distribution de zones, type réel) ---
+  const hrData = streams?.heartrate?.data ?? null;
+
+  // Variability Index = NP / puissance moyenne (vélo). >1.15 ≈ effort en yoyo
+  // (intervalles), ≈1.0 ≈ effort lisse (endurance). Dispo sans le stream.
+  if (sport === 'cycling') {
+    const avgP = completed.metrics.cycling?.avgPowerWatts ?? null;
+    const np = completed.metrics.cycling?.normalizedPowerWatts ?? null;
+    if (avgP && np && avgP > 0) {
+      completed.variabilityIndex = Math.round((np / avgP) * 100) / 100;
+    }
+    // Distribution par zones de puissance (prioritaire si capteur disponible).
+    const powerZones = profile?.cycling?.Test?.zones;
+    if (powerData && powerData.length > 0 && powerZones) {
+      const dist = bucketByZones(powerData, powerZones);
+      if (dist.length > 0) {
+        completed.zoneDistribution = dist;
+        completed.zoneDistributionSource = 'power';
+      }
+    }
+  }
+
+  // Distribution FC depuis le stream heartrate — utilisée pour tous les sports
+  // sans distribution puissance (running, swimming, vélo sans capteur de puissance).
+  if (!completed.zoneDistribution && hrData && hrData.length > 0) {
+    const hrZones = profile?.heartRate?.zones;
+    if (hrZones) {
+      const dist = bucketByZones(hrData, hrZones);
+      if (dist.length > 0) {
+        completed.zoneDistribution = dist;
+        completed.zoneDistributionSource = 'hr';
+      }
+    }
+  }
+
+  // Type réellement effectué (remplace la devinette "endurance" de l'IA).
+  completed.detectedType = classifySessionType(completed, sport, profile);
 
   // metrics.{sport}.tss n'est rempli que si la source est la métrique primaire
   // de ce sport (vélo→power, run/swim→pace). Sinon il reste null pour ne pas

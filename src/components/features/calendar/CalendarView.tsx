@@ -32,6 +32,7 @@ interface CalendarViewProps {
     onCreatePlannedWorkoutAI: (dateStr: string, sportType: SportType, duration: number, comment: string) => Promise<void>;
     onSaveObjective: (obj: Objective) => Promise<void>;
     onRefresh: () => void;
+    onMoveWorkout: (workoutId: string, newDateStr: string) => Promise<void>;
     onSyncStrava?: () => void;
     isSyncing?: boolean;
     calendarDate: Date;
@@ -52,6 +53,7 @@ export function CalendarView({
     onCreatePlannedWorkoutAI,
     onSaveObjective,
     onRefresh,
+    onMoveWorkout,
     onSyncStrava,
     isSyncing = false,
     calendarDate,
@@ -352,6 +354,7 @@ export function CalendarView({
                 onEditObjective: handleEditObjective,
                 onRefresh,
                 onOpenGenModal: () => setShowGenModal(true),
+                onMoveWorkout,
             }}>
                 {/* Desktop Calendar Grid */}
                 <div className="hidden md:block">

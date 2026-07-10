@@ -1,7 +1,7 @@
 # PulsePeak
 
 Application web de planification et suivi d'entraînement **triathlon** (natation · cyclisme · course à pied), pilotée par l'IA.
-
+"test jira"
 ---
 
 ## Stack technique

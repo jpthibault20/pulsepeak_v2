@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
     Clock, Zap, Check, X,
     Bike, Footprints, Waves, Dumbbell, Activity
@@ -10,7 +10,13 @@ interface WorkoutBadgeProps {
     workout: Workout;
     onClick: (e: React.MouseEvent) => void;
     isCompact?: boolean;
+    // Active le glisser-déposer (vue ordinateur) : uniquement pour les séances non complétées.
+    enableDrag?: boolean;
 }
+
+// Payload transporté par le drag natif HTML5. Le type MIME custom permet aux
+// cellules du calendrier de n'accepter QUE les drops de séances.
+export const WORKOUT_DND_MIME = 'application/x-pulsepeak-workout';
 
 // 1. Configuration des styles par Sport (Couleur + Icone)
 const SPORT_CONFIG: Record<string, { icon: React.ElementType, color: string, bg: string }> = {
@@ -21,7 +27,7 @@ const SPORT_CONFIG: Record<string, { icon: React.ElementType, color: string, bg:
     default: { icon: Activity, color: 'text-slate-400', bg: 'bg-slate-500' }
 };
 
-export function WorkoutBadge({ workout, onClick, isCompact = false }: WorkoutBadgeProps) {
+export function WorkoutBadge({ workout, onClick, isCompact = false, enableDrag = false }: WorkoutBadgeProps) {
     // --- Extraction des données ---
     const sportKey = workout.sportType?.toLowerCase() || 'default';
     const config = SPORT_CONFIG[sportKey] || SPORT_CONFIG.default;
@@ -29,6 +35,19 @@ export function WorkoutBadge({ workout, onClick, isCompact = false }: WorkoutBad
 
     const isCompleted = workout.status === 'completed';
     const isMissed = workout.status === 'missed';
+
+    // Une séance est déplaçable uniquement si elle n'est pas complétée (pending/missed).
+    const canDrag = enableDrag && !isCompleted;
+    const [isDragging, setIsDragging] = useState(false);
+
+    const handleDragStart = (e: React.DragEvent) => {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData(
+            WORKOUT_DND_MIME,
+            JSON.stringify({ id: workout.id, date: workout.date }),
+        );
+        setIsDragging(true);
+    };
 
     const duration = workout.completedData?.actualDurationMinutes || workout.plannedData?.durationMinutes || 0;
     // Affichage : TSS canonique pour les séances complétées, TSS planifié pour les pending.
@@ -54,10 +73,16 @@ export function WorkoutBadge({ workout, onClick, isCompact = false }: WorkoutBad
     return (
         <div
             onClick={onClick}
+            draggable={canDrag}
+            onDragStart={canDrag ? handleDragStart : undefined}
+            onDragEnd={canDrag ? () => setIsDragging(false) : undefined}
+            title={canDrag ? 'Glisser vers un autre jour pour replanifier' : undefined}
             className={`
                 relative flex flex-col gap-1
-                w-full rounded-r-md shadow-sm transition-all duration-200 cursor-pointer
+                w-full rounded-r-md shadow-sm transition-all duration-200
                 overflow-hidden group
+                ${canDrag ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}
+                ${isDragging ? 'opacity-40' : ''}
                 ${containerStyle}
                 ${isCompact ? 'p-1.5' : 'p-2'}
                 mb-1.5

@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
     Activity, Clock, Zap, Mountain,
-    ChevronLeft, CheckCircle, XCircle,
+    ChevronLeft, ChevronRight, CheckCircle, XCircle,
     CalendarDays, Edit, Trash2, RefreshCw,
     AlertTriangle, Send, X, MapPin,
     Bike, FootprintsIcon as Running, Waves, Heart,
@@ -42,6 +42,9 @@ interface WorkoutDetailViewProps {
     onDelete: (workoutId: string) => Promise<void>;
     onRegenerate: (workoutId: string, instruction?: string) => Promise<void>;
     onRefresh?: () => Promise<void>;
+    onNavigate?: (direction: 'prev' | 'next') => void;
+    hasPrev?: boolean;
+    hasNext?: boolean;
 }
 
 // --- Sport Config ---
@@ -311,7 +314,7 @@ const AISummary: React.FC<{ workout: Workout; enabled: boolean }> = ({ workout, 
                     Erreur - Cliquer pour réessayer
                 </button>
             ) : summary ? (
-                <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">{summary}</p>
+                <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line">{summary}</p>
             ) : null}
         </div>
     );
@@ -665,6 +668,9 @@ export const WorkoutDetailView: React.FC<WorkoutDetailViewProps> = ({
     onDelete,
     onRegenerate,
     onRefresh,
+    onNavigate,
+    hasPrev = false,
+    hasNext = false,
 }) => {
     const [isCompleting, setIsCompleting] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
@@ -731,7 +737,9 @@ export const WorkoutDetailView: React.FC<WorkoutDetailViewProps> = ({
         try {
             await onUpdate(workout.id, status, feedback);
             setIsCompleting(false); setIsEditing(false);
-            if (status === 'pending' && isCompleted) onClose();
+            // Retour au calendrier après un changement de statut simple
+            // (repasser en attente depuis "fait", ou marquer comme raté)
+            if ((status === 'pending' && isCompleted) || status === 'missed') onClose();
         } catch (e) { console.error(e); }
         finally { setIsMutating(false); }
     };
@@ -742,10 +750,32 @@ export const WorkoutDetailView: React.FC<WorkoutDetailViewProps> = ({
     return (
         <div className="w-full max-w-2xl mx-auto py-4 md:py-8 animate-in fade-in duration-300 pb-24 md:pb-8">
 
-            {/* Back button */}
-            <button onClick={onClose} className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-900 dark:hover:text-white mb-5 transition-colors">
-                <ChevronLeft size={18} /> Retour
-            </button>
+            {/* Back button + navigation séance précédente / suivante */}
+            <div className="flex items-center justify-between mb-5">
+                <button onClick={onClose} className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors">
+                    <ChevronLeft size={18} /> Retour
+                </button>
+                {onNavigate && (
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => onNavigate('prev')}
+                            disabled={!hasPrev}
+                            aria-label="Séance précédente"
+                            className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                            <ChevronLeft size={14} /> Précédente
+                        </button>
+                        <button
+                            onClick={() => onNavigate('next')}
+                            disabled={!hasNext}
+                            aria-label="Séance suivante"
+                            className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                            Suivante <ChevronRight size={14} />
+                        </button>
+                    </div>
+                )}
+            </div>
 
             {/* ═══════════════════════════════════════════════════
                 HEADER with gradient accent
@@ -802,8 +832,8 @@ export const WorkoutDetailView: React.FC<WorkoutDetailViewProps> = ({
                         )}
                     </div>
 
-                    {/* Quick planned stats (for pending only, inline in header) */}
-                    {isPending && planned && (
+                    {/* Quick planned stats (pending + missed, inline in header) */}
+                    {(isPending || isMissed) && planned && (
                         <div className="flex items-center gap-4 mt-4 pt-3 border-t border-slate-200/60 dark:border-slate-700/40">
                             {planned.durationMinutes && (
                                 <div className="flex items-center gap-1.5 text-sm">
@@ -899,8 +929,9 @@ export const WorkoutDetailView: React.FC<WorkoutDetailViewProps> = ({
 
             {/* ═══════════════════════════════════════════════════
                 PLANNED / PENDING VIEW
+                (affiché aussi pour une séance ratée : on garde le contenu prévu)
             ═══════════════════════════════════════════════════ */}
-            {isPending && <PlannedStructure workout={workout} />}
+            {(isPending || isMissed) && <PlannedStructure workout={workout} />}
 
             {/* ═══════════════════════════════════════════════════
                 ACTIONS
