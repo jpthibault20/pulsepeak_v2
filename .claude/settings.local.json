@@ -35,7 +35,9 @@
       "Bash(sed -i 's/parseISO\\(/parseLocalDate\\(/g' src/app/actions/schedule.ts)",
       "Read(//c/c/Users/tjean/OneDrive/Documents/github/pulsepeak2/src/app/actions/**)",
       "Bash(npm run *)",
-      "WebFetch(domain:www.trainingpeaks.com)"
+      "WebFetch(domain:www.trainingpeaks.com)",
+      "PowerShell(npm run *)",
+      "PowerShell(Get-Process *)"
     ]
   }
 }

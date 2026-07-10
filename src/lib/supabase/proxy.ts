@@ -22,7 +22,8 @@ export async function updateSession(request: NextRequest) {
                             ...options,
                             secure: process.env.NODE_ENV === 'production',
                             sameSite: 'lax',
-                            maxAge: 400 * 24 * 60 * 60, // 400 jours — max autorisé
+                            // 400 jours (max autorisé) — sauf suppression (valeur vide = signOut)
+                            maxAge: value ? 400 * 24 * 60 * 60 : 0,
                         }),
                     );
                 },
