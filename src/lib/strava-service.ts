@@ -129,13 +129,13 @@ export async function getStravaActivitiesAllPages(after: number, token?: string)
 }
 
 /**
- * Récupère les streams (watts, time) d'une activité Strava.
- * Retourne null si pas de capteur de puissance ou erreur.
+ * Récupère les streams (watts, heartrate, time) d'une activité Strava.
+ * Retourne null si aucun stream exploitable ou erreur.
  */
 async function getStravaStreams(accessToken: string, activityId: number): Promise<StravaStream | null> {
   try {
     const res = await fetch(
-      `https://www.strava.com/api/v3/activities/${activityId}/streams?keys=watts,time&key_type=time`,
+      `https://www.strava.com/api/v3/activities/${activityId}/streams?keys=watts,heartrate,time&key_type=time`,
       { headers: { Authorization: `Bearer ${accessToken}` }, next: { revalidate: 3600 } }
     );
     if (!res.ok) return null;
@@ -144,16 +144,17 @@ async function getStravaStreams(accessToken: string, activityId: number): Promis
     const result: StravaStream = {};
     for (const s of streams) {
       if (s.type === 'watts') result.watts = { data: s.data };
+      if (s.type === 'heartrate') result.heartrate = { data: s.data };
       if (s.type === 'time') result.time = { data: s.data };
     }
-    return result.watts ? result : null;
+    return (result.watts || result.heartrate) ? result : null;
   } catch {
     return null;
   }
 }
 
 /**
- * Récupère le détail d'une activité + ses streams (puissance) si c'est du vélo.
+ * Récupère le détail d'une activité + ses streams (puissance + cardio) si disponibles.
  *
  * @param token   Access token déjà résolu (évite un getProfile par activité).
  * @param profile Profil déjà chargé, transmis au mapper pour le calcul de TSS.
@@ -164,8 +165,6 @@ async function getStravaStreams(accessToken: string, activityId: number): Promis
 export async function getStravaActivityById(id: number, token?: string, profile?: Profile) {
   const accessToken = token ?? await getValidAccessToken(profile);
 
-  // Le détail summary n'indique pas toujours le sport ; on fetch d'abord le détail,
-  // puis les streams uniquement pour le vélo (seul sport exploitant la puissance).
   const res = await fetch(`https://www.strava.com/api/v3/activities/${id}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
     next: { revalidate: 3600 },
@@ -178,7 +177,10 @@ export async function getStravaActivityById(id: number, token?: string, profile?
 
   const x = await res.json();
 
-  const streams = mapStravaSport(String(x.type ?? '')) === 'cycling'
+  // Streams fetchés pour vélo et running (puissance + cardio selon dispo).
+  // La natation et les autres sports n'ont généralement pas de streams exploitables.
+  const sportType = mapStravaSport(String(x.type ?? ''));
+  const streams = (sportType === 'cycling' || sportType === 'running')
     ? await getStravaStreams(accessToken, id)
     : null;
 

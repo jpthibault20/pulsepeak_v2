@@ -22,6 +22,7 @@ interface StravaLapInput {
 
 export interface StravaStream {
   watts?: { data: number[] };
+  heartrate?: { data: number[] };
   time?: { data: number[] };
 }
 
@@ -200,6 +201,8 @@ export async function mapStravaToCompletedData(activity: StravaActivityInput, st
   if (tssResult.intensityFactor != null) completed.intensityFactor = tssResult.intensityFactor;
 
   // --- SIGNAUX D'ANALYSE (VI, distribution de zones, type réel) ---
+  const hrData = streams?.heartrate?.data ?? null;
+
   // Variability Index = NP / puissance moyenne (vélo). >1.15 ≈ effort en yoyo
   // (intervalles), ≈1.0 ≈ effort lisse (endurance). Dispo sans le stream.
   if (sport === 'cycling') {
@@ -208,13 +211,26 @@ export async function mapStravaToCompletedData(activity: StravaActivityInput, st
     if (avgP && np && avgP > 0) {
       completed.variabilityIndex = Math.round((np / avgP) * 100) / 100;
     }
-    // Distribution du temps par zone de puissance (depuis le stream watts).
-    const zones = profile?.cycling?.Test?.zones;
-    if (powerData && powerData.length > 0 && zones) {
-      const dist = bucketByZones(powerData, zones);
+    // Distribution par zones de puissance (prioritaire si capteur disponible).
+    const powerZones = profile?.cycling?.Test?.zones;
+    if (powerData && powerData.length > 0 && powerZones) {
+      const dist = bucketByZones(powerData, powerZones);
       if (dist.length > 0) {
         completed.zoneDistribution = dist;
         completed.zoneDistributionSource = 'power';
+      }
+    }
+  }
+
+  // Distribution FC depuis le stream heartrate — utilisée pour tous les sports
+  // sans distribution puissance (running, swimming, vélo sans capteur de puissance).
+  if (!completed.zoneDistribution && hrData && hrData.length > 0) {
+    const hrZones = profile?.heartRate?.zones;
+    if (hrZones) {
+      const dist = bucketByZones(hrData, hrZones);
+      if (dist.length > 0) {
+        completed.zoneDistribution = dist;
+        completed.zoneDistributionSource = 'hr';
       }
     }
   }
