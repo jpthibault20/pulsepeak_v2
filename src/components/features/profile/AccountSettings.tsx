@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Lock, LogOut, CheckCircle2, AlertCircle, Loader2, BookOpen } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { logout } from '@/app/actions/auth';
+import { clearSessionBackup } from '@/lib/supabase/session-backup';
 import { resetTutorial } from '@/components/features/tutorial/TutorialOverlay';
 
 interface AccountSettingsProps {
@@ -15,7 +15,6 @@ interface AccountSettingsProps {
 }
 
 export function AccountSettings({ stravaWriteBack = true, onStravaWriteBackChange, isPro = false, hasStrava = false }: AccountSettingsProps) {
-    const router = useRouter();
     const supabase = createClient();
 
     const [newPassword, setNewPassword]       = useState('');
@@ -55,10 +54,12 @@ export function AccountSettings({ stravaWriteBack = true, onStravaWriteBackChang
 
     const handleLogout = async () => {
         setIsLoggingOut(true);
+        // Effacer la sauvegarde locale AVANT la déconnexion, sinon le filet de
+        // sécurité (AuthSessionGuard) ressusciterait la session sur /auth.
+        clearSessionBackup();
         // Déconnexion via Server Action : supprime les cookies posés côté serveur
         await logout();
-        router.push('/auth');
-        router.refresh();
+        window.location.assign('/auth');
     };
 
     return (

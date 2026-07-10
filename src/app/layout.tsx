@@ -2,6 +2,7 @@ import './globals.css';
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import { ThemeProvider } from '@/components/ThemeProvider';
+import { AuthSessionGuard } from '@/components/AuthSessionGuard';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -54,6 +55,7 @@ export default function RootLayout({
                 />
             </head>
             <body className={inter.className}>
+                <AuthSessionGuard />
                 <ThemeProvider>
                     <div className="min-h-screen bg-slate-100 dark:bg-slate-950">
                         {children}

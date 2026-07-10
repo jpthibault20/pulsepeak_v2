@@ -37,7 +37,8 @@
       "Bash(npm run *)",
       "WebFetch(domain:www.trainingpeaks.com)",
       "PowerShell(npm run *)",
-      "PowerShell(Get-Process *)"
+      "PowerShell(Get-Process *)",
+      "WebFetch(domain:bugs.webkit.org)"
     ]
   }
 }
