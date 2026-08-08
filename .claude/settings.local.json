@@ -38,7 +38,8 @@
       "WebFetch(domain:www.trainingpeaks.com)",
       "PowerShell(npm run *)",
       "PowerShell(Get-Process *)",
-      "WebFetch(domain:bugs.webkit.org)"
+      "WebFetch(domain:bugs.webkit.org)",
+      "Bash(git config *)"
     ]
   }
 }
