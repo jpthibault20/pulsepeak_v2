@@ -25,7 +25,6 @@ interface CalendarViewProps {
     profile: Profile;
     userID: string;
     objectives: Objective[];
-    onViewWorkout: (workout: Workout) => void;
     onGenerate: (blockFocus: string, customTheme: string | null, startDate: string, numWeeks: number, availability: { [key: string]: import('@/lib/data/type').AvailabilitySlot }) => void;
     onGenerateToObjective: (planStartDate: string, availability: { [key: string]: import('@/lib/data/type').AvailabilitySlot }) => Promise<void>;
     onAddManualWorkout: (workout: Workout) => void;
@@ -46,7 +45,6 @@ export function CalendarView({
     profile,
     userID,
     objectives,
-    onViewWorkout,
     onGenerate,
     onGenerateToObjective,
     onAddManualWorkout,
@@ -350,7 +348,6 @@ export function CalendarView({
                 scheduleData,
                 profile,
                 objectives,
-                onViewWorkout,
                 onEditObjective: handleEditObjective,
                 onRefresh,
                 onOpenGenModal: () => setShowGenModal(true),

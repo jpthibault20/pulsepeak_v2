@@ -1,19 +1,16 @@
 'use client';
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 // Import des Server Actions (par sous-module schedule)
 import { saveAthleteProfile, loadInitialData, type ActivePlanSummary } from '@/app/actions/schedule/profile';
 import { CreateAdvancedPlan, CreatePlanToObjective } from '@/app/actions/schedule/plan-creation';
 import {
-    updateWorkoutStatus,
-    toggleWorkoutMode,
     moveWorkout,
     addManualWorkout,
-    deleteWorkout,
-    unlinkStravaWorkout,
 } from '@/app/actions/schedule/workout-actions';
-import { regenerateWorkout, createPlannedWorkoutAI } from '@/app/actions/schedule/workout-ai';
+import { createPlannedWorkoutAI } from '@/app/actions/schedule/workout-ai';
 import { syncStravaActivities } from '@/app/actions/schedule/strava-sync';
 import {
     saveObjectiveAction,
@@ -21,7 +18,7 @@ import {
 } from '@/app/actions/objectives';
 
 // Import des types
-import type { CompletedDataFeedback, SportType } from '@/lib/data/type';
+import type { SportType } from '@/lib/data/type';
 import type { Objective, Workout } from '@/lib/data/DatabaseTypes';
 import { SubscriptionProvider, type Plan } from '@/lib/subscription/context';
 import { FreePlanGate } from '@/components/features/billing/FreePlanGate';
@@ -30,7 +27,6 @@ import { FreePlanGate } from '@/components/features/billing/FreePlanGate';
 import { CalendarView } from '@/components/features/calendar/CalendarView';
 import { ProfileForm } from '@/components/features/profile/ProfileForm';
 import { StatsView } from '@/components/features/stats/StatsView';
-import { WorkoutDetailView } from '@/components/features/workout/WorkoutDetailView';
 import { Nav, View } from '@/components/layout/nav';
 import { ChatView, type Message as ChatMessage } from '@/components/features/chat/ChatView';
 import { PlanView } from '@/components/features/plan/PlanView';
@@ -39,9 +35,13 @@ import { ConfirmReplacePlanModal } from '@/components/features/plan/ConfirmRepla
 import { TutorialOverlay } from '@/components/features/tutorial/TutorialOverlay';
 import { WelcomeScreen } from '@/components/features/tutorial/WelcomeScreen';
 import { Card } from '@/components/ui';
-import { createCompletedData } from '@/lib/utils';
+import { parseLocalDate, formatDateKey } from '@/lib/utils';
 import { Profile, Schedule } from '@/lib/data/DatabaseTypes';
 import { useTheme } from '@/components/ThemeProvider';
+
+// Onglets adressables via `?vue=` — les vues d'onboarding en sont exclues,
+// elles dépendent de l'état du profil et non d'un choix de navigation.
+const VALID_VIEWS: View[] = ['dashboard', 'plan', 'stats', 'settings', 'chat'];
 
 // Definition des Props reçues du Server Component
 interface AppClientWrapperProps {
@@ -64,23 +64,67 @@ export default function AppClientWrapper({ initialProfile, initialSchedule, init
         }
     }, [initialProfile.theme, setThemeFromProfile]);
 
+    // --- État porté par l'URL ---
+    // `/?vue=plan&mois=2026-10&jour=2026-10-14`. Ces trois paramètres survivent
+    // à l'aller-retour vers /seance/[id], qui démonte ce composant.
+    const router = useRouter();
+    const searchParams = useSearchParams();
+    const vueParam = searchParams.get('vue');
+    const moisParam = searchParams.get('mois');
+    const jourParam = searchParams.get('jour');
+
+    const updateUrlState = useCallback((patch: Record<string, string | null>) => {
+        const next = new URLSearchParams(searchParams.toString());
+        for (const [k, v] of Object.entries(patch)) {
+            if (v === null) next.delete(k);
+            else next.set(k, v);
+        }
+        // replace + scroll:false : changer de mois ne doit ni empiler une entrée
+        // d'historique ni renvoyer l'utilisateur en haut de page.
+        router.replace(`/?${next.toString()}`, { scroll: false });
+    }, [router, searchParams]);
+
     // --- State Management ---
-    const startView: View = initialProfile.firstName ? 'dashboard' : 'welcome';
+    const startView: View = initialProfile.firstName
+        ? (VALID_VIEWS.includes(vueParam as View) ? (vueParam as View) : 'dashboard')
+        : 'welcome';
     const [view, setView] = useState<View>(startView);
+
+    // Un retour navigateur depuis /seance/[id] ne remonte pas le composant :
+    // on resynchronise l'onglet affiché sur le paramètre d'URL.
+    useEffect(() => {
+        if (!initialProfile.firstName) return;
+        const target: View = VALID_VIEWS.includes(vueParam as View) ? (vueParam as View) : 'dashboard';
+        setView(current => (current === 'onboarding' || current === 'welcome' ? current : target));
+    }, [vueParam, initialProfile.firstName]);
 
     const [profile, setProfile] = useState<Profile>(initialProfile);
     const [schedule, setSchedule] = useState<Schedule | null>(initialSchedule);
     const [objectives, setObjectives] = useState<Objective[]>(initialObjectives);
     const [activePlan, setActivePlan] = useState<ActivePlanSummary | null>(initialActivePlan);
-    const [selectedWorkout, setSelectedWorkout] = useState<Workout | null>(null);
-    const [previousView, setPreviousView] = useState<View>('dashboard');
-
     // Action de génération en attente de confirmation (popup "Remplacer le plan")
     const [pendingReplaceAction, setPendingReplaceAction] = useState<{ run: () => Promise<void> } | null>(null);
 
-    // Calendrier — persist le mois sélectionné entre les changements de vue
-    const [calendarDate, setCalendarDate] = useState(new Date());
-    const [calendarMobileDay, setCalendarMobileDay] = useState(new Date());
+    // Calendrier — l'état vit dans l'URL et non dans un useState : ouvrir une
+    // séance quitte `/` et démonte ce composant. Sans ça, l'utilisateur qui
+    // navigue en octobre, ouvre une séance puis revient se retrouve au mois
+    // courant. Bénéfice collatéral : le calendrier devient partageable.
+    const calendarDate = useMemo(
+        () => (moisParam ? parseLocalDate(`${moisParam}-01`) : new Date()),
+        [moisParam],
+    );
+    const calendarMobileDay = useMemo(
+        () => (jourParam ? parseLocalDate(jourParam) : new Date()),
+        [jourParam],
+    );
+
+    const setCalendarDate = useCallback((d: Date) => {
+        updateUrlState({ mois: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` });
+    }, [updateUrlState]);
+
+    const setCalendarMobileDay = useCallback((d: Date) => {
+        updateUrlState({ jour: formatDateKey(d) });
+    }, [updateUrlState]);
 
     // Chat — persist messages while app is open
     const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
@@ -168,13 +212,11 @@ export default function AppClientWrapper({ initialProfile, initialSchedule, init
     }, [initialProfile?.firstName, initialProfile?.strava?.athleteId]);
 
     // --- Navigation Handler ---
-    const handleViewChange = useCallback((view: View) => {
-        if (view !== 'workout-detail') {
-            setSelectedWorkout(null);
-        }
-        setView(view);
+    const handleViewChange = useCallback((next: View) => {
+        setView(next);
+        updateUrlState({ vue: next === 'dashboard' ? null : next });
         window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, []);
+    }, [updateUrlState]);
 
     // --- Onboarding → Tutorial transition ---
     // Track that we came from onboarding (first-time user flow)
@@ -182,43 +224,12 @@ export default function AppClientWrapper({ initialProfile, initialSchedule, init
 
     const handleOnboardingSuccess = useCallback(() => {
         setView('dashboard');
-        setSelectedWorkout(null);
         window.scrollTo({ top: 0, behavior: 'smooth' });
         // Always show tutorial after first onboarding
         if (cameFromOnboarding.current) {
             setShowTutorial(true);
         }
     }, []);
-
-    const handleViewWorkout = useCallback((workout: Workout) => {
-        setView(current => {
-            setPreviousView(current);
-            return 'workout-detail';
-        });
-        setSelectedWorkout(workout);
-    }, []);
-
-    // Liste des séances ordonnée chronologiquement (id en départage déterministe)
-    // pour la navigation séance précédente / suivante depuis la vue détail.
-    const orderedWorkouts = useMemo(() => {
-        if (!schedule) return [] as Workout[];
-        return [...schedule.workouts].sort(
-            (a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id)
-        );
-    }, [schedule]);
-
-    const selectedWorkoutIndex = useMemo(
-        () => (selectedWorkout ? orderedWorkouts.findIndex(w => w.id === selectedWorkout.id) : -1),
-        [orderedWorkouts, selectedWorkout]
-    );
-
-    const handleNavigateWorkout = useCallback((direction: 'prev' | 'next') => {
-        if (selectedWorkoutIndex === -1) return;
-        const target = orderedWorkouts[selectedWorkoutIndex + (direction === 'prev' ? -1 : 1)];
-        if (!target) return;
-        setSelectedWorkout(target);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, [orderedWorkouts, selectedWorkoutIndex]);
 
     // --- Plan Generation Handlers ---
     // Logique de génération réelle, séparée du gate de confirmation : on l'appelle
@@ -396,47 +407,9 @@ export default function AppClientWrapper({ initialProfile, initialSchedule, init
     }, [refreshData]);
 
     // --- Workout Handlers ---
-    const handleUpdateStatus = useCallback(async (
-        workoutId: string,
-        status: 'pending' | 'completed' | 'missed',
-        feedback?: CompletedDataFeedback
-    ) => {
-        try {
-            await updateWorkoutStatus(workoutId, status, feedback);
-            if (schedule && feedback) {
-                const updatedWorkout = schedule.workouts.find(w => w.id === workoutId);
-                if (updatedWorkout) {
-                    setSelectedWorkout({
-                        ...updatedWorkout,
-                        status,
-                        completedData: createCompletedData(feedback),
-                    });
-                }
-            }
-            await refreshData();
-        } catch (e) {
-            console.error('Erreur mise à jour statut:', e);
-            setError('Impossible de mettre à jour le statut.');
-        }
-    }, [refreshData, schedule]);
-
-    const handleToggleMode = useCallback(async (workoutId: string) => {
-        try {
-            await toggleWorkoutMode(workoutId);
-            if (schedule) {
-                const workout = schedule.workouts.find(w => w.id === workoutId);
-                if (workout) {
-                    const newMode = workout.mode === 'Outdoor' ? 'Indoor' : 'Outdoor';
-                    setSelectedWorkout({ ...workout, mode: newMode });
-                }
-            }
-            await refreshData();
-        } catch (e) {
-            console.error('Erreur toggle mode:', e);
-            setError('Impossible de changer le mode.');
-        }
-    }, [refreshData, schedule]);
-
+    // Statut, mode, déliaison et suppression sont désormais pilotés depuis
+    // /seance/[id], qui appelle directement les Server Actions. Ne restent ici
+    // que les actions déclenchées depuis le calendrier.
     const handleMoveWorkout = useCallback(async (workoutId: string, newDateStr: string) => {
         try {
             await moveWorkout(workoutId, newDateStr);
@@ -446,17 +419,6 @@ export default function AppClientWrapper({ initialProfile, initialSchedule, init
             setError('Impossible de déplacer la séance.');
         }
     }, [refreshData]);
-
-    const handleUnlinkStrava = useCallback(async (workoutId: string, targetWorkoutId: string | null) => {
-        try {
-            await unlinkStravaWorkout(workoutId, targetWorkoutId);
-            await refreshData();
-            handleViewChange('dashboard');
-        } catch (e) {
-            console.error('Erreur déliaison Strava:', e);
-            setError('Impossible de délier la séance.');
-        }
-    }, [refreshData, handleViewChange]);
 
     const handleCreatePlannedWorkoutAI = useCallback(async (dateStr: string, sportType: SportType, duration: number, comment: string) => {
         try {
@@ -477,35 +439,6 @@ export default function AppClientWrapper({ initialProfile, initialSchedule, init
             setError('Impossible d\'ajouter la séance.');
         }
     }, [refreshData]);
-
-    const handleDeleteWorkout = useCallback(async (workoutId: string) => {
-        try {
-            await deleteWorkout(workoutId);
-            await refreshData();
-            setView('dashboard');
-            setSelectedWorkout(null);
-        } catch (e) {
-            console.error('Erreur suppression séance:', e);
-            setError('Impossible de supprimer la séance.');
-        }
-    }, [refreshData]);
-
-    const handleRegenerateWorkout = useCallback(async (workoutId: string, instruction?: string) => {
-        try {
-            await regenerateWorkout(workoutId, instruction);
-            const { schedule: newSchedule } = await loadInitialData();
-            setSchedule(newSchedule);
-            if (newSchedule) {
-                const regeneratedWorkout = newSchedule.workouts.find(w => w.id === workoutId);
-                if (regeneratedWorkout) {
-                    setSelectedWorkout(regeneratedWorkout);
-                }
-            }
-        } catch (e) {
-            console.error('Erreur régénération séance:', e);
-            setError('Impossible de régénérer la séance.');
-        }
-    }, []);
 
     // --- Render Logic ---
     const showNav = view !== 'onboarding' && view !== 'welcome';
@@ -608,7 +541,6 @@ export default function AppClientWrapper({ initialProfile, initialSchedule, init
                                 profile={profile}
                                 userID={profile.id}
                                 objectives={objectives}
-                                onViewWorkout={handleViewWorkout}
                                 onGenerate={handleGenerate}
                                 onGenerateToObjective={handleGenerateToObjective}
                                 onAddManualWorkout={handleAddManualWorkout}
@@ -632,38 +564,8 @@ export default function AppClientWrapper({ initialProfile, initialSchedule, init
                                 profile={profile}
                                 objectives={objectives}
                                 onRefresh={refreshData}
-                                onViewWorkout={(workoutId) => {
-                                    const w = schedule.workouts.find(wo => wo.id === workoutId);
-                                    if (w) { setSelectedWorkout(w); setPreviousView('plan'); setView('workout-detail'); }
-                                }}
                                 onGenerate={handleGenerate}
                                 onGenerateToObjective={handleGenerateToObjective}
-                            />
-                        </div>
-                    )}
-
-                    {view === 'workout-detail' && selectedWorkout && (
-                        <div className="animate-in slide-in-from-right-4 duration-300">
-                            <WorkoutDetailView
-                                workout={selectedWorkout}
-                                sameDayWorkouts={schedule?.workouts.filter(w =>
-                                    w.date === selectedWorkout.date &&
-                                    w.id !== selectedWorkout.id &&
-                                    w.status === 'pending' &&
-                                    w.sportType === selectedWorkout.sportType
-                                ) ?? []}
-                                profile={profile}
-                                onClose={() => handleViewChange(previousView)}
-                                onUpdate={handleUpdateStatus}
-                                onToggleMode={handleToggleMode}
-                                onMoveWorkout={handleMoveWorkout}
-                                onUnlinkStrava={handleUnlinkStrava}
-                                onDelete={handleDeleteWorkout}
-                                onRegenerate={handleRegenerateWorkout}
-                                onRefresh={refreshData}
-                                onNavigate={handleNavigateWorkout}
-                                hasPrev={selectedWorkoutIndex > 0}
-                                hasNext={selectedWorkoutIndex !== -1 && selectedWorkoutIndex < orderedWorkouts.length - 1}
                             />
                         </div>
                     )}

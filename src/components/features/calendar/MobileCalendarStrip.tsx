@@ -140,7 +140,7 @@ export function MobileCalendarStrip({
     onOpenManualModal,
     onVisibleMonthChange,
 }: MobileCalendarStripProps) {
-    const { scheduleData, profile, objectives, onViewWorkout, onEditObjective, onRefresh, onOpenGenModal } = useCalendarContext();
+    const { scheduleData, profile, objectives, onEditObjective, onRefresh, onOpenGenModal } = useCalendarContext();
     const scrollRef = useRef<HTMLDivElement>(null);
     const todayKey = useMemo(() => formatDateKey(new Date()), []);
     const parentSelectedKey = formatDateKey(selectedDay);
@@ -587,7 +587,7 @@ export function MobileCalendarStrip({
                         <WorkoutBadge
                             key={workout.id}
                             workout={workout}
-                            onClick={() => onViewWorkout(workout)}
+                            href={`/seance/${workout.id}?retour=agenda`}
                             isCompact={false}
                         />
                     ))}

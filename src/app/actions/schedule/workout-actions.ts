@@ -62,6 +62,9 @@ export async function updateWorkoutStatus(
     await recalculateFitnessMetrics();
 
     revalidatePath('/');
+    // Le cache de /seance/[id] est distinct : sans ça, un retour arrière
+    // après modification réafficherait des données périmées.
+    revalidatePath('/seance/[id]', 'page');
 }
 
 
@@ -98,6 +101,9 @@ export async function toggleWorkoutMode(workoutId: string) {
         schedule.workouts[index].mode = currentMode === 'Outdoor' ? 'Indoor' : 'Outdoor';
         await saveSchedule(schedule);
         revalidatePath('/');
+    // Le cache de /seance/[id] est distinct : sans ça, un retour arrière
+    // après modification réafficherait des données périmées.
+    revalidatePath('/seance/[id]', 'page');
     }
 }
 
@@ -155,6 +161,9 @@ export async function moveWorkout(workoutId: string, newDateStr: string) {
     }
 
     revalidatePath('/');
+    // Le cache de /seance/[id] est distinct : sans ça, un retour arrière
+    // après modification réafficherait des données périmées.
+    revalidatePath('/seance/[id]', 'page');
 }
 
 
@@ -217,6 +226,9 @@ export async function unlinkStravaWorkout(workoutId: string, targetWorkoutId: st
     }
 
     revalidatePath('/');
+    // Le cache de /seance/[id] est distinct : sans ça, un retour arrière
+    // après modification réafficherait des données périmées.
+    revalidatePath('/seance/[id]', 'page');
 }
 
 
@@ -276,6 +288,9 @@ export async function addManualWorkout(workout: Workout) {
 
     await saveSchedule(schedule);
     revalidatePath('/');
+    // Le cache de /seance/[id] est distinct : sans ça, un retour arrière
+    // après modification réafficherait des données périmées.
+    revalidatePath('/seance/[id]', 'page');
 }
 
 
@@ -283,6 +298,9 @@ export async function addManualWorkout(workout: Workout) {
 export async function deleteWorkout(workoutId: string) {
     await deleteWorkoutById(workoutId);
     revalidatePath('/');
+    // Le cache de /seance/[id] est distinct : sans ça, un retour arrière
+    // après modification réafficherait des données périmées.
+    revalidatePath('/seance/[id]', 'page');
 }
 
 
@@ -306,4 +324,7 @@ export async function updateWorkoutRPE(workoutId: string, rpe: number): Promise<
     });
 
     revalidatePath('/');
+    // Le cache de /seance/[id] est distinct : sans ça, un retour arrière
+    // après modification réafficherait des données périmées.
+    revalidatePath('/seance/[id]', 'page');
 }

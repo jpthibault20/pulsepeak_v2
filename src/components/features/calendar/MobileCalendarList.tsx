@@ -1,6 +1,5 @@
 import React, { useMemo } from 'react';
 import { Plus, BedDouble } from 'lucide-react';
-import type { Workout } from '@/lib/data/DatabaseTypes';
 import { WorkoutBadge } from './WorkoutBadge';
 import { formatDateKey, DAY_NAMES_SHORT, MONTH_NAMES } from '@/lib/utils';
 import { Schedule } from '@/lib/data/DatabaseTypes';
@@ -10,7 +9,6 @@ interface MobileCalendarListProps {
     currentMonth: number;
     scheduleData: Schedule;
     onOpenManualModal: (e: React.MouseEvent, date: Date) => void;
-    onViewWorkout: (workout: Workout) => void;
 }
 
 export function MobileCalendarList({
@@ -18,7 +16,6 @@ export function MobileCalendarList({
     currentMonth,
     scheduleData,
     onOpenManualModal,
-    onViewWorkout
 }: MobileCalendarListProps) {
     // ✅ CORRECTION : Calculer les stats de toutes les semaines EN AMONT
     const allWeekStats = useMemo(() => {
@@ -109,7 +106,7 @@ export function MobileCalendarList({
                                     <div className="p-3">
                                         <WorkoutBadge
                                             workout={workout}
-                                            onClick={() => onViewWorkout(workout)}
+                                            href={`/seance/${workout.id}?retour=agenda`}
                                             isCompact={false}
                                         />
                                     </div>

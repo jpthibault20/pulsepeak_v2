@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 import {
     Calendar, ChevronDown, ChevronUp, Bike, Footprints, Waves, Activity,
     Loader2, AlertCircle, Sparkles, Trophy, TrendingUp, Clock, CheckCircle2,
@@ -47,12 +48,11 @@ interface PlanViewProps {
     profile: Profile;
     objectives: Objective[];
     onRefresh: () => void;
-    onViewWorkout?: (workoutId: string) => void;
     onGenerate: (blockFocus: string, customTheme: string | null, startDate: string, numWeeks: number, availability: { [key: string]: AvailabilitySlot }) => Promise<void>;
     onGenerateToObjective: (planStartDate: string, availability: { [key: string]: AvailabilitySlot }) => Promise<void>;
 }
 
-export function PlanView({ profile, objectives: userObjectives, onRefresh, onViewWorkout, onGenerate, onGenerateToObjective }: PlanViewProps) {
+export function PlanView({ profile, objectives: userObjectives, onRefresh, onGenerate, onGenerateToObjective }: PlanViewProps) {
     const [data, setData] = useState<PlanOverviewData | null>(null);
     const [loading, setLoading] = useState(true);
     const [expandedBlock, setExpandedBlock] = useState<string | null>(null);
@@ -193,7 +193,6 @@ export function PlanView({ profile, objectives: userObjectives, onRefresh, onVie
                             expanded={expandedBlock === block.id}
                             onToggle={() => setExpandedBlock(expandedBlock === block.id ? null : block.id)}
                             onRegenerate={(weekId) => setRegenTarget({ blockId: block.id, weekId })}
-                            onViewWorkout={onViewWorkout}
                             profile={profile}
                         />
                     ))}
@@ -330,11 +329,10 @@ interface BlockCardProps {
     expanded: boolean;
     onToggle: () => void;
     onRegenerate: (weekId?: string) => void;
-    onViewWorkout?: (workoutId: string) => void;
     profile: Profile;
 }
 
-function BlockCard({ block, isFirst, expanded, onToggle, onRegenerate, onViewWorkout }: BlockCardProps) {
+function BlockCard({ block, isFirst, expanded, onToggle, onRegenerate }: BlockCardProps) {
     const config = BLOCK_TYPE_CONFIG[block.type] ?? BLOCK_TYPE_CONFIG.General;
     const completionPct = block.totalCount > 0 ? Math.round((block.completedCount / block.totalCount) * 100) : 0;
     const tssRatio = block.totalPlannedTSS > 0 ? Math.round((block.totalActualTSS / block.totalPlannedTSS) * 100) : 0;
@@ -405,7 +403,6 @@ function BlockCard({ block, isFirst, expanded, onToggle, onRegenerate, onViewWor
                                 blockType={block.type}
                                 blockStartDate={block.startDate}
                                 onRegenerate={() => onRegenerate(week.id)}
-                                onViewWorkout={onViewWorkout}
                             />
                         ))}
 
@@ -433,10 +430,9 @@ interface WeekRowProps {
     blockType: string;
     blockStartDate: string;
     onRegenerate: () => void;
-    onViewWorkout?: (workoutId: string) => void;
 }
 
-function WeekRow({ week, blockType, onRegenerate, onViewWorkout }: WeekRowProps) {
+function WeekRow({ week, blockType, onRegenerate }: WeekRowProps) {
     const effectiveType = (week.type === 'Load' && blockType === 'Taper') ? 'Taper' : week.type;
     const badge = WEEK_TYPE_BADGE[effectiveType] ?? WEEK_TYPE_BADGE.Load;
     const todayStr = new Date().toISOString().slice(0, 10);
@@ -487,9 +483,9 @@ function WeekRow({ week, blockType, onRegenerate, onViewWorkout }: WeekRowProps)
                         const SportIcon = SPORT_ICON[w.sportType] ?? Activity;
                         const sportColor = SPORT_COLOR[w.sportType] ?? 'text-slate-400';
                         return (
-                            <button
+                            <Link
                                 key={w.id}
-                                onClick={() => onViewWorkout?.(w.id)}
+                                href={`/seance/${w.id}?retour=plan`}
                                 className={`
                                     flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium transition-colors
                                     ${w.status === 'completed'
@@ -504,7 +500,7 @@ function WeekRow({ week, blockType, onRegenerate, onViewWorkout }: WeekRowProps)
                             >
                                 <SportIcon size={10} className={sportColor} />
                                 <span className="max-w-20 truncate">{w.title}</span>
-                            </button>
+                            </Link>
                         );
                     })}
                 </div>

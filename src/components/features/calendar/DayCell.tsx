@@ -12,7 +12,6 @@ interface DayCellProps {
     isCurrentMonth: boolean;
     isToday: boolean;
     onOpenManualModal: (e: React.MouseEvent, date: Date) => void;
-    onViewWorkout: (workout: Workout) => void;
     onEditObjective: (obj: Objective) => void;
     onMoveWorkout: (workoutId: string, newDateStr: string) => Promise<void> | void;
 }
@@ -24,7 +23,6 @@ export function DayCell({
     isCurrentMonth,
     isToday,
     onOpenManualModal,
-    onViewWorkout,
     onEditObjective,
     onMoveWorkout,
 }: DayCellProps) {
@@ -148,7 +146,7 @@ export function DayCell({
                     <div className="animate-in fade-in zoom-in-95 duration-200">
                         <WorkoutBadge
                             workout={workouts[0]}
-                            onClick={() => onViewWorkout(workouts[0])}
+                            href={`/seance/${workouts[0].id}?retour=agenda`}
                             isCompact={false}
                             enableDrag
                         />
@@ -199,7 +197,6 @@ export function DayCell({
                                 <WorkoutPopover
                                     workouts={workouts}
                                     onClose={() => setShowPopover(false)}
-                                    onViewWorkout={onViewWorkout}
                                     enableDrag
                                 />
                             </div>

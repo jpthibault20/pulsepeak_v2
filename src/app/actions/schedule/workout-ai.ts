@@ -96,6 +96,9 @@ export async function createPlannedWorkoutAI(
 
         await insertSingleWorkout(workout);
         revalidatePath('/');
+    // Le cache de /seance/[id] est distinct : sans ça, un retour arrière
+    // après modification réafficherait des données périmées.
+    revalidatePath('/seance/[id]', 'page');
     } catch (error) {
         console.error("Échec création séance IA:", error);
         throw new Error("L'IA n'a pas pu créer la séance.");
@@ -153,6 +156,9 @@ export async function regenerateWorkout(workoutId: string, instruction?: string)
 
         await saveSchedule(existingSchedule);
         revalidatePath('/');
+    // Le cache de /seance/[id] est distinct : sans ça, un retour arrière
+    // après modification réafficherait des données périmées.
+    revalidatePath('/seance/[id]', 'page');
 
     } catch (error) {
         console.error("Échec régénération:", error);
@@ -282,5 +288,8 @@ Score déviation: ${deviation.score}`;
     }
 
     revalidatePath('/');
+    // Le cache de /seance/[id] est distinct : sans ça, un retour arrière
+    // après modification réafficherait des données périmées.
+    revalidatePath('/seance/[id]', 'page');
     return { updatedCount };
 }
