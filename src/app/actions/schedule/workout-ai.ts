@@ -3,7 +3,6 @@
  * @brief   Server Actions IA autour d'une séance unique :
  *          - création d'une séance planifiée via Gemini
  *          - régénération d'une séance existante
- *          - résumé IA (cache DB) d'une séance complétée
  *          - métriques de déviation planifié vs réalisé (cache DB)
  *          - régénération adaptative du reste de la semaine après déviation
  *
@@ -158,35 +157,6 @@ export async function regenerateWorkout(workoutId: string, instruction?: string)
     } catch (error) {
         console.error("Échec régénération:", error);
         throw new Error("L'IA n'a pas pu créer la séance.");
-    }
-}
-
-
-/**
- * Renvoie le résumé IA d'une séance complétée. Résultat mis en cache dans
- * `workout.aiSummary` : hit → renvoie directement, miss → appelle Gemini puis persiste.
- */
-export async function getWorkoutAISummary(workout: Workout): Promise<string> {
-    // Cache hit → retourner directement
-    if (workout.aiSummary) return workout.aiSummary;
-
-    const { generateWorkoutSummary } = await import('@/lib/ai/coach-api');
-    const profile = await getProfile();
-    if (!profile || !workout.completedData) return "";
-    try {
-        const { summary, tokensUsed } = await generateWorkoutSummary(profile, workout);
-        // Persister en DB pour ne plus recalculer
-        if (summary) {
-            await updateWorkoutById(workout.id, { aiSummary: summary });
-        }
-        // Comptabiliser les tokens
-        if (tokensUsed > 0) {
-            await atomicIncrementTokenCount(tokensUsed);
-        }
-        return summary;
-    } catch (e) {
-        console.error("AI Summary error:", e);
-        return "";
     }
 }
 

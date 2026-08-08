@@ -160,6 +160,5 @@ export interface Workout {
     plannedData: PlannedData | null;
     completedData: CompletedData | null;
 
-    aiSummary?: string | null;         // Résumé IA mis en cache (généré une seule fois)
     aiDeviationCache?: DeviationMetrics | null; // Déviation mise en cache
 }

@@ -2,8 +2,6 @@ import { Profile } from "../data/DatabaseTypes";
 import { CoachType, SportType } from "../data/type";
 import { Workout } from "../data/DatabaseTypes";
 import { structureSessionDescription } from "./structure-session";
-import { classifySessionType } from "../stats/classifySession";
-import { computeDeviationMetrics } from "../stats/computeDeviation";
 
 // ─── Coach persona ────────────────────────────────────────────────────────────
 // Role injecté en tête des prompts IA selon le coach choisi par l'athlète.
@@ -50,6 +48,74 @@ function sanitizeDescription(s: string | null | undefined): string | null {
     return s!.trim();
 }
 
+// Détecte une réponse où Gemini a émis "\n" au lieu d'échapper les accents :
+// "séance" ressort en "s\n\nance", "récup" en "r\n\ncup". Le JSON reste valide
+// (les \n sont correctement échappés) donc JSON.parse ne voit rien — sans ce
+// garde-fou le texte mutilé part en base, et l'accent est irrécupérable.
+//
+// Deux signaux, exigés ensemble — chacun seul produit des faux positifs :
+//
+//  1. un "\n\n" entre deux minuscules (chaque accent perdu en génère exactement
+//     deux). Seul, il flaguerait un vrai saut de ligne du type "4x400m\nrécup".
+//  2. une densité d'accents effondrée : le mode de panne les détruit tous. Du
+//     français sain tourne autour de 1 pour 30 caractères ; on ne déclenche
+//     qu'en dessous de 1 pour 100.
+//
+// Le test se fait chaîne par chaîne sur l'objet parsé, jamais sur la réponse
+// entière : la corruption est souvent partielle (titre intact, description
+// mutilée) et les accents des champs sains masqueraient l'effondrement de
+// densité du champ atteint.
+const MANGLED_ACCENT = /[a-zà-öø-ÿ]\n\n[a-zà-öø-ÿ]/;
+const ACCENTED_CHAR = /[à-öø-ÿÀ-ÖØ-Þ]/g;
+
+// Parcourt récursivement les chaînes d'une valeur JSON parsée.
+function* walkStrings(value: unknown): Generator<string> {
+    if (typeof value === 'string') yield value;
+    else if (Array.isArray(value)) for (const v of value) yield* walkStrings(v);
+    else if (value && typeof value === 'object') for (const v of Object.values(value)) yield* walkStrings(v);
+}
+
+function assertNoMangledAccents(parsed: unknown, tag: string): void {
+    for (const s of walkStrings(parsed)) {
+        const m = s.match(MANGLED_ACCENT);
+        if (!m) continue;
+
+        const accents = (s.match(ACCENTED_CHAR) || []).length;
+        if (accents >= s.length / 100) continue; // accents intacts → vrais sauts de ligne
+
+        throw new Error(
+            `AI response corrupted [${tag}] : accents remplacés par des sauts de ligne ` +
+            `(${accents} accent(s) sur ${s.length} car., "${s.slice(0, 80)}…")`
+        );
+    }
+}
+
+// ─── Champ "why" (pourquoi cette séance) ──────────────────────────────────────
+// Réponse au point de frustration des débutants : ils enchaînent des sorties Z2
+// sans comprendre que c'est cohérent avec leur niveau. Le vocabulaire est calé
+// sur profile.experience — un débutant n'a pas à décoder "capillarisation".
+
+const WHY_LEVEL_TONE: Record<string, string> = {
+    'Débutant': `Zéro jargon. Pas de "Z2", "seuil", "VO2max", "TSS" sans traduction immédiate en sensation ("allure où tu peux tenir une conversation"). Explique le bénéfice en mots du quotidien.`,
+    'Intermédiaire': `Vocabulaire d'entraînement courant autorisé (zones, seuil, endurance fondamentale) sans jargon poussé. Relie la séance à sa place dans la semaine ou le bloc.`,
+    'Avancé': `Vocabulaire technique assumé (filière, capillarisation, économie de course, PMA). Va droit au but sur l'adaptation physiologique visée.`,
+};
+
+/**
+ * Instruction de prompt pour le champ "why" — justification pédagogique de la
+ * séance affichée à l'athlète. Injectée dans les 3 chemins de génération
+ * (plan complet, semaine, séance seule) pour garantir un ton homogène.
+ */
+export function buildWhyInstruction(experience: Profile['experience']): string {
+    const tone = WHY_LEVEL_TONE[experience ?? 'Intermédiaire'] ?? WHY_LEVEL_TONE['Intermédiaire'];
+    return `"why" = pourquoi CETTE séance maintenant. UNE seule phrase (100-180 caractères), adressée au sportif au tutoiement.
+- Contenu : la raison d'être de la séance dans sa progression ET/OU ce qu'elle développe. Jamais le déroulé — ça, c'est "description".
+- NIVEAU ${experience ?? 'Intermédiaire'} : ${tone}
+- Rassure quand une séance paraît "trop facile" : si l'intensité est basse, dis explicitement pourquoi c'est le bon choix à son niveau.
+- Interdit : répéter le titre, lister les intervalles, "cette séance est importante" sans dire pourquoi, "N/A", vide.
+- Exemple attendu : "Du volume à allure facile pour construire ton moteur aérobie : c'est ce qui te permettra d'encaisser les séances plus dures plus tard."`;
+}
+
 /**
  * Génère un plan d'entraînement complet via l'API Gemini.
  */
@@ -66,6 +132,7 @@ interface RawAIWorkout {
     target_pace: string | null;       // Spécifique course/natation (ex: "5:30/km")
     target_hr: number | null;         // Universel
     description: string;              // Description unique (fusionnée)
+    why: string;                      // Justification pédagogique (1 phrase)
 }
 
 // Formatage d'une allure stockée en secondes/km vers "M:SS".
@@ -203,8 +270,9 @@ export async function callGeminiAPI(
             // si Gemini en émet, le parse échoue. On les remplace par un espace.
             cleanText = cleanText.replace(/\t/g, ' ');
 
+            let parsed: unknown;
             try {
-                return { data: JSON.parse(cleanText), tokensUsed };
+                parsed = JSON.parse(cleanText);
             } catch (parseError) {
                 // Diagnostic : on remonte le finishReason et la queue du texte
                 // pour distinguer une troncature (MAX_TOKENS) d'un vrai JSON cassé.
@@ -213,6 +281,13 @@ export async function callGeminiAPI(
                     `JSON parsing failed [${tag}] (finishReason=${finishReason ?? 'unknown'}, len=${cleanText.length}, tail="…${tail}"): ${parseError}`
                 );
             }
+
+            // Hors du try : ce rejet ne doit pas être maquillé en erreur de parsing.
+            // Relance via la boucle de retry — l'accent perdu est irrécupérable,
+            // seule une regénération sauve la séance.
+            assertNoMangledAccents(parsed, tag);
+
+            return { data: parsed, tokensUsed };
 
         } catch (error) {
             if (attempt < MAX_RETRIES - 1) {
@@ -334,10 +409,12 @@ RÈGLES D'OR :
 6. **Contraintes Horaire** : NE JAMAIS programmer une séance plus longue que la disponibilité indiquée pour ce jour-là.
 7. **Jours de Repos** : Si nécessaire, n'hésite pas à laisser des jours vides (pas de JSON généré pour ce jour) pour la récupération.
 8. **Description OBLIGATOIRE** : chaque séance DOIT contenir une description unique, structurée (échauffement, corps, retour au calme avec valeurs de zones/watts/allures). JAMAIS de "N/A", jamais vide. Style télégraphique : consignes factuelles (durées, cibles chiffrées, récups). Pas d'intro pédagogique, pas de justification, pas de conclusion. Longueur 150-400 caractères (jusqu'à 600 pour natation technique). Cohérence durée : la somme des durées des blocs doit ≈ durée totale (±5%).
+9. **Champ "why" OBLIGATOIRE** — c'est le SEUL endroit où tu expliques le pourquoi de la séance. La "description" reste purement factuelle.
+${buildWhyInstruction(profile.experience)}
 FORMAT DE RÉPONSE :
 - Tu dois répondre UNIQUEMENT avec le JSON validé par le schéma fourni.
 - Aucune phrase d'introduction ou de conclusion.
-- LANGUE : français UNIQUEMENT pour tous les textes (title, type, description, synthesis). Pas d'anglais sauf termes techniques sans équivalent (FTP, TSS, RPE, VO2max).
+- LANGUE : français UNIQUEMENT pour tous les textes (title, type, description, why, synthesis). Pas d'anglais sauf termes techniques sans équivalent (FTP, TSS, RPE, VO2max).
 `;
 
     const userPrompt = `
@@ -396,9 +473,10 @@ FORMAT DE RÉPONSE :
                         "target_pace": { "type": "STRING", "nullable": true, "description": "Allure cible (Min/km ou min/100m)" },
                         "target_hr": { "type": "NUMBER", "nullable": true, "description": "BPM cible moyen" },
 
-                        "description": { "type": "STRING", "description": "Description technique complète (échauffement, corps, retour au calme, structure d'intervalles). Jamais N/A, jamais vide." }
+                        "description": { "type": "STRING", "description": "Description technique complète (échauffement, corps, retour au calme, structure d'intervalles). Jamais N/A, jamais vide." },
+                        "why": { "type": "STRING", "description": "UNE phrase : pourquoi cette séance et ce qu'elle travaille, adaptée au niveau de l'athlète. Jamais N/A, jamais vide." }
                     },
-                    "required": ["date", "sport", "title", "type", "duration", "mode", "description"]
+                    "required": ["date", "sport", "title", "type", "duration", "mode", "description", "why"]
                 }
             }
         },
@@ -449,6 +527,7 @@ FORMAT DE RÉPONSE :
                     targetHeartRateBPM: w.target_hr || null,
 
                     description: sanitizeDescription(w.description),
+                    why: sanitizeDescription(w.why),
                 },
 
                 // Pas de données réalisées pour le futur
@@ -514,6 +593,7 @@ ${sportRules}
 
 RÈGLES :
 - "description" = consignes d'exécution factuelles : durées, distances, cibles chiffrées (watts/allure/FC), récups, répétitions. Style télégraphique. Pas d'intro pédagogique, pas de justification du pourquoi, pas de conclusion.
+- ${buildWhyInstruction(profile.experience)}
 - Cohérence durée : la somme des durées des blocs doit ≈ durée totale demandée (±5%).
 - Pas de "N/A", "au choix", "varié" non précisé. Tout explicite.
 - Longueur : 150-400 caractères (jusqu'à 600 pour natation technique).
@@ -550,9 +630,10 @@ Génère UN objet JSON pour la séance.`;
                     "duration": { "type": "NUMBER" }, // -> plannedData.durationMinutes
                     "tss": { "type": "NUMBER" }, // -> plannedData.plannedTSS
                     "mode": { "type": "STRING", "enum": ["Outdoor", "Indoor"] },
-                    "description": { "type": "STRING", "description": "Description technique unique. Jamais N/A, jamais vide." }
+                    "description": { "type": "STRING", "description": "Description technique unique. Jamais N/A, jamais vide." },
+                    "why": { "type": "STRING", "description": "UNE phrase : pourquoi cette séance et ce qu'elle travaille, adaptée au niveau de l'athlète. Jamais N/A, jamais vide." }
                 },
-                "required": ["title", "type", "duration", "mode", "description"]
+                "required": ["title", "type", "duration", "mode", "description", "why"]
             }
         },
         "required": ["workout"]
@@ -579,10 +660,11 @@ Génère UN objet JSON pour la séance.`;
 
     const { data: resultData, tokensUsed } = await callGeminiAPI(payload, `single/${sportType}/gen`);
 
-    const w = (resultData as { workout: { title: string; type: string; duration: number; tss?: number; mode: 'Outdoor' | 'Indoor'; description: string } }).workout;
+    const w = (resultData as { workout: { title: string; type: string; duration: number; tss?: number; mode: 'Outdoor' | 'Indoor'; description: string; why?: string } }).workout;
 
     const rawDesc = w.description ?? '';
     const description = sanitizeDescription(rawDesc);
+    const why = sanitizeDescription(w.why);
 
     // Second appel IA : structuration → PlannedData complet (cibles top-level + structure).
     // Si pas de description, on construit un PlannedData minimal sans appel IA.
@@ -592,6 +674,7 @@ Génère UN objet JSON pour la séance.`;
             sportType,
             durationMinutes: w.duration,
             plannedTSS: w.tss ?? null,
+            why,
             profile,
         })
         : {
@@ -605,6 +688,7 @@ Génère UN objet JSON pour la séance.`;
                 distanceMeters: null,
                 plannedTSS: w.tss ?? null,
                 description,
+                why,
                 structure: [],
             },
             tokensUsed: 0,
@@ -624,211 +708,5 @@ Génère UN objet JSON pour la séance.`;
         },
         tokensUsed: tokensUsed + structureTokens,
     };
-}
-
-
-/**
- * Génère une analyse post-séance à vraie valeur ajoutée.
- * Adapte le contenu au niveau du sportif et au type de séance (libre vs planifiée).
- */
-export async function generateWorkoutSummary(
-    profile: Profile,
-    workout: Workout
-): Promise<{ summary: string; tokensUsed: number }> {
-    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not set.");
-    if (!workout.completedData) return { summary: "", tokensUsed: 0 };
-
-    const cd = workout.completedData;
-    const planned = workout.plannedData;
-    const sport = workout.sportType;
-    const ftp = profile.cycling?.Test?.ftp;
-    const experience = profile.experience ?? 'Intermédiaire';
-    const hasPlanned = planned && (planned.durationMinutes || planned.plannedTSS || planned.targetPowerWatts);
-
-    // Stimulus réellement effectué — calculé à l'import, fallback à la lecture
-    // pour les séances anciennes/manuelles sans le champ persisté.
-    const detectedType = cd.detectedType ?? classifySessionType(cd, sport, profile);
-
-    // Étape 1 (pur calcul) : écart planifié vs réalisé. Alimente le 2e temps de l'analyse.
-    const deviation = hasPlanned ? computeDeviationMetrics(workout, profile) : null;
-
-    // ── Métriques de base ──────────────────────────────────
-    let metricsStr = `Durée: ${cd.actualDurationMinutes}min, Distance: ${cd.distanceKm}km`;
-    if (cd.heartRate?.avgBPM) metricsStr += `, FC moy: ${cd.heartRate.avgBPM}bpm`;
-    if (cd.heartRate?.maxBPM) metricsStr += `, FC max: ${cd.heartRate.maxBPM}bpm`;
-    if (cd.perceivedEffort != null) metricsStr += `, RPE: ${cd.perceivedEffort}/10`;
-
-    if (sport === 'cycling' && cd.metrics?.cycling) {
-        const c = cd.metrics.cycling;
-        if (c.avgPowerWatts) metricsStr += `, Puissance moy: ${c.avgPowerWatts}W`;
-        if (c.normalizedPowerWatts) metricsStr += `, NP: ${c.normalizedPowerWatts}W`;
-        if (c.tss) metricsStr += `, TSS: ${c.tss}`;
-        if (c.elevationGainMeters) metricsStr += `, D+: ${c.elevationGainMeters}m`;
-    }
-    if (sport === 'running' && cd.metrics?.running) {
-        const r = cd.metrics.running;
-        if (r.avgPaceMinPerKm) metricsStr += `, Allure: ${r.avgPaceMinPerKm}/km`;
-        if (r.elevationGainMeters) metricsStr += `, D+: ${r.elevationGainMeters}m`;
-    }
-
-    // ── Distribution en zones (quel stimulus réel) ─────────
-    // Priorité au champ top-level (puissance vélo calculée à l'import), fallback
-    // sur l'ancienne distribution FC si présente.
-    let zonesStr = "";
-    const zoneDist = (cd.zoneDistribution && cd.zoneDistribution.length >= 3)
-        ? cd.zoneDistribution
-        : (cd.heartRate?.zoneDistribution && cd.heartRate.zoneDistribution.length >= 3)
-            ? cd.heartRate.zoneDistribution
-            : null;
-    if (zoneDist) {
-        const refLabel = cd.zoneDistributionSource === 'power' ? 'PUISSANCE' : 'FC';
-        const zoneNames = ['Z1 Récup', 'Z2 Endurance', 'Z3 Tempo', 'Z4 Seuil', 'Z5 VO2max', 'Z6 Anaéro', 'Z7 Neuro'];
-        zonesStr = `\nDISTRIBUTION ZONES ${refLabel}: ` + zoneDist.map((pct, i) =>
-            `${zoneNames[i] ?? `Z${i + 1}`}: ${Math.round(pct)}%`
-        ).join(', ');
-    }
-
-    // ── Variabilité (régularité de l'effort) ───────────────
-    let stabilityStr = "";
-    if (cd.variabilityIndex != null) {
-        stabilityStr = `\nINDICE VARIABILITÉ: ${cd.variabilityIndex.toFixed(2)} (1.0 = effort parfaitement stable, >1.15 = effort en yoyo)`;
-    }
-
-    // ── Analyse laps : fade rate + découplage ──────────────
-    let advancedStr = "";
-    if (cd.laps && cd.laps.length > 0) {
-        const powerLaps = cd.laps.filter(l => l.avgPower != null && l.avgPower! > 0);
-        if (powerLaps.length >= 3) {
-            const first = powerLaps[0].avgPower!;
-            const last = powerLaps[powerLaps.length - 1].avgPower!;
-            const fade = ((first - last) / first) * 100;
-            if (Math.abs(fade) > 3) {
-                advancedStr += `\nFADE RATE: ${fade.toFixed(1)}% (1er intervalle ${first}W → dernier ${last}W)`;
-            }
-        }
-
-        const validLaps = cd.laps.filter(l => l.avgPower && l.avgPower > 0 && l.avgHeartRate && l.avgHeartRate > 0);
-        if (validLaps.length >= 4) {
-            const mid = Math.floor(validLaps.length / 2);
-            const ratioHalf = (half: typeof validLaps) => {
-                const dur = half.reduce((s, l) => s + l.durationSeconds, 0);
-                if (dur === 0) return 0;
-                const pw = half.reduce((s, l) => s + l.avgPower! * l.durationSeconds, 0) / dur;
-                const hr = half.reduce((s, l) => s + l.avgHeartRate! * l.durationSeconds, 0) / dur;
-                return hr > 0 ? pw / hr : 0;
-            };
-            const r1 = ratioHalf(validLaps.slice(0, mid));
-            const r2 = ratioHalf(validLaps.slice(mid));
-            if (r1 > 0) {
-                const decoupling = ((r1 - r2) / r1) * 100;
-                if (Math.abs(decoupling) > 2) {
-                    advancedStr += `\nDÉCOUPLAGE AÉROBIE: ${decoupling.toFixed(1)}%`;
-                }
-            }
-        }
-    }
-
-    // ── Laps résumé compact ────────────────────────────────
-    let lapsStr = "";
-    if (cd.laps && cd.laps.length > 0) {
-        // Max 6 laps pour limiter les tokens
-        const lapsToShow = cd.laps.length > 6 ? cd.laps.slice(0, 6) : cd.laps;
-        lapsStr = `\nLAPS (${cd.laps.length}):\n` + lapsToShow.map(l => {
-            let s = `- ${l.name}: ${Math.round(l.durationSeconds / 60)}min`;
-            if (l.avgPower) s += `, ${l.avgPower}W moy`;
-            if (l.maxPower) s += `/${l.maxPower}W max`;
-            if (l.avgHeartRate) s += `, ${l.avgHeartRate}bpm`;
-            return s;
-        }).join('\n');
-    }
-
-    // ── Contexte planifié ──────────────────────────────────
-    let plannedStr = "";
-    if (hasPlanned) {
-        plannedStr = `\nPLANIFIÉ: ${planned!.durationMinutes}min`;
-        if (planned!.plannedTSS) plannedStr += `, TSS cible: ${planned!.plannedTSS}`;
-        if (planned!.targetPowerWatts) plannedStr += `, Puissance cible: ${planned!.targetPowerWatts}W`;
-        if (planned!.description) plannedStr += `\nConsigne: ${planned!.description.substring(0, 200)}`;
-    }
-
-    // ── System prompt adapté au niveau et au type ──────────
-    const levelInstructions: Record<string, string> = {
-        'Débutant': `NIVEAU SPORTIF: DÉBUTANT — Le sportif ne maîtrise pas ses données.
-- Traduis TOUT en sensations physiques ("le moment où tu avais du mal à parler, c'est ta zone rouge")
-- UNE seule info actionnable, pas de jargon (pas de NP, IF, TSS, découplage)
-- Explique à quoi sert ce type de séance dans sa progression
-- Si les zones FC sont dispo, dis-lui simplement combien de temps il a passé "facile" vs "dur"`,
-
-        'Intermédiaire': `NIVEAU SPORTIF: INTERMÉDIAIRE — Le sportif lit ses données mais ne voit pas les liens.
-- Connecte la séance au reste de sa semaine ou à ses habitudes
-- Mentionne la variabilité (effort en yoyo vs stable) si pertinent
-- Utilise les termes simples (puissance, zones) mais pas le jargon poussé
-- Donne un conseil concret pour la prochaine séance similaire`,
-
-        'Avancé': `NIVEAU SPORTIF: AVANCÉ — Le sportif connaît ses métriques.
-- Va droit aux détails qui font la différence (fade rate, découplage, gestion du pacing)
-- Mentionne la qualité d'exécution, pas juste les moyennes
-- Si les récups entre intervalles semblent mal gérées (puissance haute dans les repos), dis-le
-- Utilise le vocabulaire technique quand il apporte de la précision`,
-    };
-
-    const deviationContext = deviation
-        ? `${deviation.headline || 'Globalement conforme aux cibles'}${deviation.details.length ? ` — ${deviation.details.slice(0, 3).join(' ; ')}` : ''}`
-        : null;
-
-    const analysisInstructions = `MÉTHODE EN DEUX TEMPS — respecte cet ordre.
-
-TEMPS 1 — LA SÉANCE RÉALISÉE (ce qui a VRAIMENT été fait, indépendamment du plan)
-- Le stimulus réel détecté est : "${detectedType}". Appuie-toi dessus. Ne dis JAMAIS "endurance" si ce type indique autre chose.
-- Révèle ce que les moyennes cachent : distribution en zones, variabilité (effort lisse vs yoyo), pics des laps (moy vs max).
-- Qualité d'exécution : régularité des intervalles (fade rate), gestion des récups, couplage puissance/FC (FC qui dérive à watts stables = effort réel plus dur).
-
-TEMPS 2 — ${hasPlanned ? 'COMPARAISON AU PLAN + AVIS COACH' : 'AVIS COACH'}
-${hasPlanned
-            ? `- Compare le réalisé au prévu${deviationContext ? ` (écart calculé : ${deviationContext})` : ''}.
-- Si RPE bas + métriques sous les cibles : choix volontaire, ne dis pas "fatigue". Si RPE élevé + sous les cibles : vraie difficulté, quelque chose a limité la perf.
-- Termine par UN conseil de coach actionnable pour la suite.`
-            : `- Pas de cibles planifiées : dis si ce stimulus tombe au bon moment et donne UN conseil de coach pour capitaliser.`}`;
-
-    const systemPrompt = `Tu t'adresses directement au sportif (tutoiement). Texte brut, sans HTML ni markdown.
-
-TON: Toujours positif et encourageant. Chaque séance faite est une bonne séance. Valorise l'effort et ce qui a été bien fait. Tu as le droit de donner UN conseil pour progresser, mais toujours formulé positivement ("la prochaine fois tu peux essayer..." et pas "tu n'as pas réussi à...").
-
-RÈGLE D'OR: Ne reformule JAMAIS les chiffres que le sportif peut lire lui-même. Révèle ce qu'il ne peut PAS voir seul : les liens cachés, la qualité derrière les moyennes, le stimulus réel de sa sortie.
-
-${levelInstructions[experience] ?? levelInstructions['Intermédiaire']}
-
-${analysisInstructions}
-
-FORMAT STRICT:
-- DEUX temps dans le texte : d'abord la séance réalisée, puis (nouvelle ligne) le verdict vs plan / l'avis coach. Sépare-les par un seul saut de ligne.
-- Très concis : ~2 phrases par temps, 5-6 lignes max à l'écran (affiché sur mobile).
-- Texte brut UNIQUEMENT. AUCUN HTML (<b>, <br>, <strong>), aucun markdown (**, ##)
-- Pas de bullet points, pas de listes — deux courts paragraphes fluides
-- Ne répète pas les métriques brutes que le sportif peut lire au-dessus
-- Réponds en français`;
-
-    const userPrompt = `SÉANCE: ${workout.title} (${sport}, ${workout.workoutType})
-DATE: ${workout.date}
-STIMULUS RÉEL DÉTECTÉ: ${detectedType}
-${ftp ? `FTP: ${ftp}W` : ''}
-RÉALISÉ: ${metricsStr}${zonesStr}${stabilityStr}${advancedStr}${lapsStr}${plannedStr}`;
-
-    const responseSchema = {
-        type: "OBJECT",
-        properties: { summary: { type: "STRING" } },
-        required: ["summary"]
-    };
-
-    const payload = {
-        contents: [{ parts: [{ text: userPrompt }] }],
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        generationConfig: { responseMimeType: "application/json", responseSchema, temperature: 0.6, maxOutputTokens: 320 },
-    };
-
-    const { data, tokensUsed } = await callGeminiAPI(payload);
-    const raw = (data as { summary: string }).summary ?? "";
-    // Strip any HTML tags that Gemini might sneak in
-    return { summary: raw.replace(/<[^>]*>/g, '').trim(), tokensUsed };
 }
 

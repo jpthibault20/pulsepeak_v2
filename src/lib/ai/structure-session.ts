@@ -451,6 +451,7 @@ function buildFallbackPlanned(input: {
     description: string;
     durationMinutes: number;
     plannedTSS: number | null;
+    why?: string | null;
 }): PlannedData {
     return {
         durationMinutes: input.durationMinutes,
@@ -462,6 +463,7 @@ function buildFallbackPlanned(input: {
         distanceMeters: null,
         plannedTSS: input.plannedTSS,
         description: input.description,
+        why: input.why ?? null,
         structure: [],
     };
 }
@@ -470,9 +472,9 @@ function buildFallbackPlanned(input: {
  * Prend une description texte de séance et renvoie un PlannedData complet :
  * cibles dominantes top-level + structure détaillée par bloc.
  *
- * Les champs durationMinutes, plannedTSS et description proviennent de l'amont
- * et sont passés tels quels — l'IA ne peut pas les modifier (zéro risque de
- * dérive sur la durée de la séance).
+ * Les champs durationMinutes, plannedTSS, description et why proviennent de
+ * l'amont et sont passés tels quels — l'IA ne peut pas les modifier (zéro risque
+ * de dérive sur la durée de la séance).
  *
  * En cas d'échec (parsing, exception, structure vide), renvoie un PlannedData
  * minimal avec structure=[] et toutes les cibles à null. Ne lève jamais.
@@ -482,9 +484,10 @@ export async function structureSessionDescription(params: {
     sportType: SportType;
     durationMinutes: number;
     plannedTSS: number | null;
+    why?: string | null;
     profile: Profile;
 }): Promise<{ plannedData: PlannedData; tokensUsed: number }> {
-    const { description, sportType, durationMinutes, plannedTSS, profile } = params;
+    const { description, sportType, durationMinutes, plannedTSS, why, profile } = params;
 
     if (!description || description.trim().length === 0) {
         return { plannedData: buildFallbackPlanned(params), tokensUsed: 0 };
@@ -596,6 +599,7 @@ CORRECTION : les blocs aux indexes [${missingIdx.join(',')}] ont "durationActifS
             distanceMeters: parsed.distanceMeters ?? null,
             plannedTSS,
             description,
+            why: why ?? null,
             structure,
         };
 

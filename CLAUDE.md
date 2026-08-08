@@ -36,7 +36,7 @@ The schedule domain lives in `src/app/actions/schedule/` (no barrel — **import
 - `plan-creation.ts` — `CreateAdvancedPlan`, `CreatePlanToObjective` (+ private `CreateBlocks`, `CreateWeeks`, `applyTaperToWeeks`)
 - `week-actions.ts` — `getWeekContextForDate`, `getWeekPendingCount`, `generateWeekWorkoutsFromDate` + type `WeekContext`
 - `workout-actions.ts` — CRUD direct: status, toggle mode, move, unlink Strava, add/delete manual, RPE update
-- `workout-ai.ts` — AI-driven: `createPlannedWorkoutAI`, `regenerateWorkout`, `getWorkoutAISummary`, `getWorkoutDeviation`, `regenerateWeekFromDeviation`
+- `workout-ai.ts` — AI-driven: `createPlannedWorkoutAI`, `regenerateWorkout`, `getWorkoutDeviation`, `regenerateWeekFromDeviation`
 - `strava-sync.ts` — `syncStravaActivities`
 - `plan-overview.ts` — `getPlanOverview` + types `PlanOverviewBlock/Week/Data`
 - `fitness-metrics.ts` — `recalculateFitnessMetrics` (CTL/ATL)

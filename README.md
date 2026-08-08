@@ -286,7 +286,7 @@ Schéma défini dans `src/lib/db/schema.ts`. Hiérarchie d'entraînement : **`pl
 | `plans` | Plans macro (`active` / `archived`) |
 | `blocks` | Mésocycles (Base / Build / Peak / Race) avec CTL de départ et cible |
 | `weeks` | Semaines (`Load` / `Recovery` / `Taper`) avec TSS cible et réalisé |
-| `workouts` | Séances : `plannedData`, `completedData`, résumé IA, cache de dérive |
+| `workouts` | Séances : `plannedData`, `completedData`, cache de dérive |
 | `objectives` | Courses et événements cibles (priorité, statut) |
 
 Toutes les tables portent un `userId` en `onDelete: 'cascade'` depuis `profiles.id`. Les données complexes sont stockées en colonnes `jsonb` typées via `$type<…>()`.

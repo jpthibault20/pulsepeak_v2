@@ -20,7 +20,7 @@ import { formatDate } from '@/lib/utils';
 import { FeedbackForm } from './FeedbackForm';
 import { PlannedStructureView } from './PlannedStructureView';
 import { Profile } from '@/lib/data/DatabaseTypes';
-import { getWorkoutAISummary, getWorkoutDeviation, regenerateWeekFromDeviation } from '@/app/actions/schedule/workout-ai';
+import { getWorkoutDeviation, regenerateWeekFromDeviation } from '@/app/actions/schedule/workout-ai';
 import { updateWorkoutRPE } from '@/app/actions/schedule/workout-actions';
 import { BatteryLow, ArrowUpRight, Loader2 } from 'lucide-react';
 import { getWorkoutTSS } from '@/lib/stats/computeTSS';
@@ -253,48 +253,14 @@ const RPEQuickInput: React.FC<{
 };
 
 // =====================================================
-// AI Summary Component
+// Why Card — "pourquoi cette séance"
 // =====================================================
-const AISummary: React.FC<{ workout: Workout; enabled: boolean }> = ({ workout, enabled }) => {
-    const [summary, setSummary] = useState<string | null>(workout.aiSummary ?? null);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(false);
-    const hasFetched = React.useRef(false);
-
-    const fetchSummary = useCallback(async () => {
-        setLoading(true);
-        setError(false);
-        try {
-            const result = await getWorkoutAISummary(workout);
-            setSummary(result || null);
-        } catch {
-            setError(true);
-        } finally {
-            setLoading(false);
-        }
-    }, [workout]);
-
-    useEffect(() => {
-        if (!enabled || summary || hasFetched.current) return;
-        hasFetched.current = true;
-        if (workout.completedData) {
-            fetchSummary();
-        }
-    }, [enabled, workout.completedData, fetchSummary, summary]);
-
-    if (!workout.completedData) return null;
-
-    // Pas encore de RPE → on attend
-    if (!enabled && !summary) {
-        return (
-            <div className="mb-5 p-4 rounded-2xl bg-gradient-to-br from-indigo-50 via-purple-50/50 to-blue-50 dark:from-indigo-500/10 dark:via-purple-500/5 dark:to-blue-500/5 border border-indigo-200/60 dark:border-indigo-500/20 opacity-60">
-                <div className="flex items-center gap-2">
-                    <Sparkles size={13} className="text-indigo-400" />
-                    <span className="text-xs text-indigo-500 dark:text-indigo-400">Renseigne ton ressenti pour lancer l&apos;analyse</span>
-                </div>
-            </div>
-        );
-    }
+// Justification pédagogique générée avec la séance (plannedData.why). Répond au
+// besoin de comprendre ce qu'on fait quand le plan enchaîne des séances peu
+// intenses. Masqué si absent (séances générées avant l'ajout du champ).
+const WhyCard: React.FC<{ why?: string | null }> = ({ why }) => {
+    const text = why?.trim();
+    if (!text) return null;
 
     return (
         <div className="mb-5 p-4 rounded-2xl bg-gradient-to-br from-indigo-50 via-purple-50/50 to-blue-50 dark:from-indigo-500/10 dark:via-purple-500/5 dark:to-blue-500/5 border border-indigo-200/60 dark:border-indigo-500/20">
@@ -302,20 +268,9 @@ const AISummary: React.FC<{ workout: Workout; enabled: boolean }> = ({ workout, 
                 <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-indigo-100 dark:bg-indigo-500/20">
                     <Sparkles size={13} className="text-indigo-600 dark:text-indigo-400" />
                 </div>
-                <span className="text-xs font-bold text-indigo-700 dark:text-indigo-400 uppercase tracking-wider">Analyse IA</span>
+                <span className="text-xs font-bold text-indigo-700 dark:text-indigo-400 uppercase tracking-wider">Pourquoi cette séance</span>
             </div>
-            {loading ? (
-                <div className="flex items-center gap-2 py-2">
-                    <div className="w-4 h-4 border-2 border-indigo-300 dark:border-indigo-500 border-t-transparent rounded-full animate-spin" />
-                    <span className="text-sm text-indigo-600/70 dark:text-indigo-400/70">Analyse en cours...</span>
-                </div>
-            ) : error ? (
-                <button onClick={fetchSummary} className="text-sm text-indigo-500 hover:text-indigo-700 dark:hover:text-indigo-300 underline underline-offset-2">
-                    Erreur - Cliquer pour réessayer
-                </button>
-            ) : summary ? (
-                <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line">{summary}</p>
-            ) : null}
+            <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line">{text}</p>
         </div>
     );
 };
@@ -880,9 +835,6 @@ export const WorkoutDetailView: React.FC<WorkoutDetailViewProps> = ({
                         <RPEQuickInput workoutId={workout.id} onSaved={() => { setRpeSaved(true); onRefresh?.(); }} />
                     )}
 
-                    {/* AI Summary — waits for RPE if not available, or launches immediately if RPE present/cached */}
-                    <AISummary workout={workout} enabled={hasRPE} />
-
                     {/* Deviation Card (fatigue / superform detection) */}
                     {workout.plannedData && hasRPE && (
                         <DeviationCard workout={workout} onAdaptationComplete={() => { onRefresh?.(); }} />
@@ -931,7 +883,12 @@ export const WorkoutDetailView: React.FC<WorkoutDetailViewProps> = ({
                 PLANNED / PENDING VIEW
                 (affiché aussi pour une séance ratée : on garde le contenu prévu)
             ═══════════════════════════════════════════════════ */}
-            {(isPending || isMissed) && <PlannedStructure workout={workout} />}
+            {(isPending || isMissed) && (
+                <>
+                    <WhyCard why={planned?.why} />
+                    <PlannedStructure workout={workout} />
+                </>
+            )}
 
             {/* ═══════════════════════════════════════════════════
                 ACTIONS

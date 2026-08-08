@@ -19,7 +19,7 @@ import { parseLocalDate } from '@/lib/utils';
 import { atomicIncrementTokenCount, getBlock, getWeek, getWorkout } from '@/lib/data/crud';
 import { Block, Objective, Plan, Profile, Week, Workout } from '@/lib/data/DatabaseTypes';
 import type { AvailabilitySlot, SportType } from '@/lib/data/type';
-import { buildCoachRoleIntro, callGeminiAPI } from '@/lib/ai/coach-api';
+import { buildCoachRoleIntro, buildWhyInstruction, callGeminiAPI } from '@/lib/ai/coach-api';
 import { structureSessionDescription } from '@/lib/ai/structure-session';
 import { buildAllowedSlots, buildTaperPlan, formatAvailability, getActiveSports } from '../../helpers';
 import { getPreviousWeekSummary } from './ai-context';
@@ -338,6 +338,9 @@ ${profile.experience === 'Débutant' ? `⚠️ DÉBUTANT — Appliquer impérati
     h) **Exemple de description MAUVAISE (à éviter)** :
        "400m échauffement. Exercice technique 400m. 6x100m crawl. 200m cool." ← trop vague sur la technique, pas de matériel, pas de récup explicite.
 
+11. **Champ "why" OBLIGATOIRE** — c'est le SEUL endroit où tu expliques le pourquoi de la séance. La "description" reste purement factuelle.
+${buildWhyInstruction(profile.experience)}
+
 ## FORMAT DE RÉPONSE
 Réponds UNIQUEMENT avec un tableau JSON valide — sans markdown, sans explication.
 Chaque objet contient exactement :
@@ -348,6 +351,7 @@ Chaque objet contient exactement :
 - "durationMinutes" (number) : durée totale en minutes (respecter le max du créneau)
 - "plannedTSS"      (number) : TSS prévu pour cette séance
 - "description"     (string) : description technique complète (échauffement, corps, retour au calme, avec valeurs de zones/watts)
+- "why"             (string) : justification pédagogique de la séance (voir règle 11)
 
 ## JSON :
 `.trim();
@@ -361,6 +365,7 @@ Chaque objet contient exactement :
         durationMinutes: number;
         plannedTSS:      number;
         description:     string;
+        why:             string;
     };
 
     const responseSchema = {
@@ -375,8 +380,9 @@ Chaque objet contient exactement :
                 "durationMinutes": { type: "NUMBER" },
                 "plannedTSS":      { type: "NUMBER" },
                 "description":     { type: "STRING" },
+                "why":             { type: "STRING" },
             },
-            required: ["dayOffset", "sportType", "title", "workoutType", "durationMinutes", "plannedTSS", "description"],
+            required: ["dayOffset", "sportType", "title", "workoutType", "durationMinutes", "plannedTSS", "description", "why"],
         },
     };
 
@@ -446,6 +452,7 @@ Chaque objet contient exactement :
                 sportType:       w.sportType,
                 durationMinutes: w.durationMinutes,
                 plannedTSS:      w.plannedTSS,
+                why:             w.why?.trim() || null,
                 profile,
             });
             return { w, plannedData, tokensUsed };

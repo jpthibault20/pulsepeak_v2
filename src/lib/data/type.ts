@@ -24,6 +24,10 @@ export interface PlannedData {
   distanceMeters: number | null;         // volume total natation
   plannedTSS: number | null;
   description: string | null;
+  // Justification pédagogique de la séance : pourquoi elle est là et ce qu'elle
+  // travaille, en UNE phrase adaptée au niveau de l'athlète (profile.experience).
+  // Absent sur les séances générées avant l'introduction du champ → bloc masqué.
+  why?: string | null;
   structure?: StructureBlock[];
 }
 

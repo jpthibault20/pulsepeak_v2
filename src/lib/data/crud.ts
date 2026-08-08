@@ -40,7 +40,6 @@ function toWorkout(row: typeof workoutsTable.$inferSelect): Workout {
         status:        row.status,
         plannedData:   row.plannedData   as PlannedData,
         completedData: row.completedData as CompletedData | null,
-        aiSummary:     row.aiSummary ?? null,
         aiDeviationCache: row.aiDeviationCache as DeviationMetrics | null ?? null,
     };
 }
@@ -627,7 +626,7 @@ export async function atomicIncrementTokenCount(tokens: number): Promise<void> {
 
 export async function updateWorkoutById(
     workoutId: string,
-    data: Partial<Pick<Workout, 'date' | 'status' | 'completedData' | 'title' | 'sportType' | 'weekId' | 'plannedData' | 'workoutType' | 'mode' | 'aiSummary' | 'aiDeviationCache'>>,
+    data: Partial<Pick<Workout, 'date' | 'status' | 'completedData' | 'title' | 'sportType' | 'weekId' | 'plannedData' | 'workoutType' | 'mode' | 'aiDeviationCache'>>,
 ): Promise<void> {
     const userId = await getCurrentUserId();
     await db

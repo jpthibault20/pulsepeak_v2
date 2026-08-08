@@ -56,7 +56,7 @@ export async function updateWorkoutStatus(
 
     // Atomic per-row update — pas de read-modify-write sur tout le schedule
     // Invalider les caches IA quand les données changent
-    await updateWorkoutById(workout.id, { status, completedData, aiSummary: null, aiDeviationCache: null });
+    await updateWorkoutById(workout.id, { status, completedData, aiDeviationCache: null });
 
     // Recalcul CTL/ATL après tout changement de statut
     await recalculateFitnessMetrics();
@@ -302,7 +302,6 @@ export async function updateWorkoutRPE(workoutId: string, rpe: number): Promise<
 
     await updateWorkoutById(workoutId, {
         completedData: updatedCompletedData,
-        aiSummary: null,
         aiDeviationCache: null,
     });
 
