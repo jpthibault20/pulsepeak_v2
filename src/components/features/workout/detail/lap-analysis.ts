@@ -37,7 +37,7 @@ export interface LapSegment {
  * classement par seuils croissants (comme bucketByZones, prévu pour watts et
  * bpm) rangerait un sprint en Z1.
  */
-function resolveZone(value: number, zones: Zones, descending: boolean): number | null {
+export function resolveZone(value: number, zones: Zones, descending: boolean): number | null {
     const list: Array<{ n: number; min: number; max: number }> = [
         { n: 1, ...zones.z1 },
         { n: 2, ...zones.z2 },

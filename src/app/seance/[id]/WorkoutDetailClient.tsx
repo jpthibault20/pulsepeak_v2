@@ -23,6 +23,7 @@ import { WhyCard } from '@/components/features/workout/detail/WhyCard';
 import { RPEQuickInput } from '@/components/features/workout/detail/RPEQuickInput';
 import { DeviationCard } from '@/components/features/workout/detail/DeviationCard';
 import { MetricsGrid } from '@/components/features/workout/detail/MetricsGrid';
+import { IntensityCard } from '@/components/features/workout/detail/IntensityCard';
 import { LapsSection } from '@/components/features/workout/detail/LapsSection';
 import { PlannedVsActual } from '@/components/features/workout/detail/PlannedVsActual';
 import { WorkoutContextCard } from '@/components/features/workout/detail/WorkoutContextCard';
@@ -373,6 +374,7 @@ export default function WorkoutDetailClient({
                                     )}
                                     <PlannedVsActual workout={workout} />
                                     <MetricsGrid tiles={completedMetrics} />
+                                    <IntensityCard workout={workout} profile={profile} />
                                     {workout.completedData?.laps && (
                                         <LapsSection
                                             laps={workout.completedData.laps}
