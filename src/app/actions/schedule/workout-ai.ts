@@ -42,7 +42,8 @@ import {
 /**
  * Création d'une séance planifiée via l'IA.
  * L'IA reçoit l'historique récent et les séances voisines pour cohérence.
- * La durée demandée par l'utilisateur prime sur celle proposée par l'IA.
+ * La durée demandée par l'utilisateur est la cible que la structure générée doit
+ * atteindre (±5 %) ; la durée finale de la séance en est déduite.
  */
 export async function createPlannedWorkoutAI(
     dateStr: string,
@@ -75,6 +76,7 @@ export async function createPlannedWorkoutAI(
             undefined,
             "General Fitness",
             instruction,
+            durationMinutes,
         );
         if (tkCreate > 0) await atomicIncrementTokenCount(tkCreate);
 
@@ -89,10 +91,10 @@ export async function createPlannedWorkoutAI(
             completedData: null,
         };
 
-        // Forcer la durée demandée si l'IA s'en écarte
-        if (workout.plannedData) {
-            workout.plannedData.durationMinutes = durationMinutes;
-        }
+        // La durée demandée est passée EN AMONT à l'IA (cible de la structure) et
+        // la durée finale est déduite des blocs générés. L'écraser ici la
+        // désaccorderait du contenu réel de la séance : une structure de 16 min
+        // étiquetée 60 min, c'est le bug que ce chemin produisait.
 
         await insertSingleWorkout(workout);
         revalidatePath('/');
@@ -139,7 +141,8 @@ export async function regenerateWorkout(workoutId: string, instruction?: string)
             surroundingWorkouts,
             oldWorkout,
             blockFocus,
-            instruction
+            instruction,
+            oldWorkout.plannedData?.durationMinutes,
         );
         if (tkRegen > 0) await atomicIncrementTokenCount(tkRegen);
 
@@ -268,7 +271,8 @@ Score déviation: ${deviation.score}`;
                 surroundingContext,
                 pendingWorkout,
                 currentBlockFocus,
-                adaptInstruction
+                adaptInstruction,
+                pendingWorkout.plannedData?.durationMinutes,
             );
             if (tkAdapt > 0) await atomicIncrementTokenCount(tkAdapt);
 

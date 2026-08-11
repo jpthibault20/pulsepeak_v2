@@ -19,6 +19,8 @@ import type {
     CyclingMetrics,
     PlannedData,
     RunningMetrics,
+    StructureRepeatBlock,
+    StructureSimpleBlock,
     Zones,
 } from '@/lib/data/type';
 
@@ -87,6 +89,54 @@ export function makePlannedData(overrides: Partial<PlannedData> = {}): PlannedDa
         distanceMeters: null,
         plannedTSS: null,
         description: null,
+        ...overrides,
+    };
+}
+
+/** Bloc simple d'une structure de séance — tout est nul sauf ce que le test pose. */
+export function makeSimpleBlock(overrides: Partial<StructureSimpleBlock> = {}): StructureSimpleBlock {
+    return {
+        type: 'Active',
+        durationActifSecondes: 600,
+        targetPowerWatts: null,
+        targetPaceMinPerKm: null,
+        targetPaceMinPer100m: null,
+        targetHeartRateBPM: null,
+        targetRPE: null,
+        distanceKm: null,
+        plannedTSS: null,
+        distanceMeters: null,
+        strokeType: null,
+        equipment: null,
+        reps: null,
+        sets: null,
+        loadKg: null,
+        description: '',
+        ...overrides,
+    };
+}
+
+/** Bloc de répétition : phase active + phase de récupération, exécutées N fois. */
+export function makeRepeatBlock(overrides: Partial<StructureRepeatBlock> = {}): StructureRepeatBlock {
+    return {
+        type: 'Repeat',
+        repeat: 3,
+        durationActifSecondes: 300,
+        targetPowerWatts: null,
+        targetPaceMinPerKm: null,
+        targetPaceMinPer100m: null,
+        targetHeartRateBPM: null,
+        targetRPE: null,
+        distanceMeters: null,
+        strokeType: null,
+        equipment: null,
+        durationRecupSecondes: 120,
+        targetRecupPowerWatts: null,
+        targetRecupPaceMinPerKm: null,
+        targetRecupPaceMinPer100m: null,
+        targetRecupHeartRateBPM: null,
+        targetRecupRPE: null,
+        description: '',
         ...overrides,
     };
 }

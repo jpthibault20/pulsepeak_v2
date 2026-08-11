@@ -3,9 +3,10 @@
  * @brief   Génération IA des séances d'une semaine complète.
  *          Point chaud du moteur de planification : construit le prompt
  *          Gemini (profil, zones, disponibilités, taper, continuité avec la
- *          semaine précédente), appelle l'IA, valide / cappe la réponse
- *          selon le programme de l'athlète, puis structure chaque séance
- *          via un second appel IA (structure-session).
+ *          semaine précédente), appelle l'IA — UNE seule fois — puis assemble
+ *          chaque séance à partir de la structure renvoyée : dépliage,
+ *          ajustement au créneau, dérivation de la durée et des cibles, rendu
+ *          du texte. Tout le post-traitement est du calcul pur (lib/structure).
  *
  *          Exporté en interne car utilisé par deux call-sites distincts :
  *          plan-creation.ts (première semaine d'un plan) et week-actions.ts
@@ -21,7 +22,8 @@ import { Block, Objective, Plan, Profile, Week, Workout } from '@/lib/data/Datab
 import type { AvailabilitySlot, SportType } from '@/lib/data/type';
 import { buildWhyInstruction, callGeminiAPI } from '@/lib/ai/coach-api';
 import { buildCoachRoleIntro } from '@/lib/ai/coach-persona';
-import { structureSessionDescription } from '@/lib/ai/structure-session';
+import { COMPACT_STRUCTURE_SCHEMA } from '@/lib/structure/schema';
+import { buildPlannedDataFromStructure } from '@/lib/structure/planned-data';
 import { buildAllowedSlots, buildTaperPlan, formatActiveSportsFr, formatAvailability, getActiveSports } from '../../helpers';
 import { getPreviousWeekSummary } from './ai-context';
 
@@ -304,19 +306,24 @@ ${profile.experience === 'Débutant' ? `⚠️ DÉBUTANT — Appliquer impérati
 6. Ne pas placer 2 séances dures (Interval, Tempo) consécutives. TOUJOURS alterner dur/facile.
 7. dayOffset doit correspondre exactement au jour disponible (0=Lundi ... 6=Dimanche).
 8. Exactement UNE séance par sport par créneau (si "vélo 1.5h" → 1 séance vélo). Jours non listés = repos, pas de séance. Jours LIBRE = repos possible si pertinent.
-9. La "description" doit être précise, technique, structurée (échauffement, corps de séance, retour au calme). Style télégraphique : consignes factuelles uniquement (durées, cibles chiffrées, récups). Pas d'intro pédagogique, pas de justification, pas de conclusion. Longueur 150-400 caractères (jusqu'à 600 pour natation technique).
-   Cohérence durée : la somme des durées des blocs doit ≈ durationMinutes (±5%).
-   Métrique PRIORITAIRE par sport :
-   - VÉLO : WATTS/zones de puissance en priorité. Fallback : FC. Dernier recours : RPE.
-   - COURSE : ALLURES (min/km) en priorité. Fallback : FC. Dernier recours : RPE.
-   - NATATION : distance (mètres) + allure /100m. Fallback : FC. Dernier recours : RPE.
+9. **"structure" EST la séance** — une liste de blocs, dans l'ordre d'exécution. Il n'y a pas de description en prose : le texte lu par l'athlète est ÉCRIT À PARTIR de ta structure. Ce qui n'est pas dans un bloc n'existe pas.
+   - "d" = durée de la phase active en SECONDES. Obligatoire hors natation. Durées rondes : multiple de 60 au-delà de 5 min.
+   - "Repeat" = motif répété "n" fois, DEUX phases maximum : l'effort ("d" + sa cible) et la récupération intercalée ("dr" + "wr"/"pr"/"hrr").
+   - **Dès que n>1, "dr" est OBLIGATOIRE et strictement positif** : une série sans récupération entre les répétitions n'est pas une série, c'est un bloc continu. Un 4×5 min VO2max sans récup est infaisable. Mets "dr":0 uniquement sur un bloc qui n'est pas une série.
+   - Un motif à TROIS phases ou plus (ex : 15 min force puis 5 min vélocité puis 10 min récup) NE RENTRE PAS dans un Repeat : déplie-le en blocs simples successifs. N'écrase jamais une phase et ne raccourcis jamais une durée pour la faire entrer dans un Repeat.
+   - Dans un Repeat, la phase active est TOUJOURS la plus intense, la récupération la moins intense.
+   - Cibles chiffrées, métrique prioritaire du sport : VÉLO "w" (watts) → sinon "hr" → sinon "rpe" ; COURSE "p" (allure min/km "M:SS") → sinon "hr" → sinon "rpe" ; NATATION "m" (mètres) + "p100" (allure /100m) → sinon "hr".
+   - N'écris QUE les champs pertinents. Un champ absent est correct ; un champ à null est du gaspillage.
+   - "n" est TOUJOURS renseigné : 1 pour un bloc joué une seule fois, N pour une série. Un bloc "Repeat" avec n=1 n'existe pas — c'est un bloc "Active".
+   - "l" = libellé court porteur de la consigne qualitative : cadence, éducatif nommé, sensation recherchée. C'est là que vit tout ce qui n'est pas un nombre.
+   **DURÉE — la somme de tes blocs EST la durée de la séance.** Elle doit OCCUPER le créneau prévu ce jour-là, à ±5 % : ni le dépasser, ni le laisser à moitié vide. Une séance de 20 min sur un créneau de 60 min est une erreur, pas une option. Écris une séance complète : échauffement, corps de séance entier avec toutes ses répétitions, retour au calme.
 
 10. **NATATION — RÈGLES SPÉCIFIQUES (IMPÉRATIVES)** :
-    a) **Volume en MÈTRES, pas en minutes.** Exprime toujours les séries sous forme "NxDm" (ex: "8x50m", "4x200m"). Indique le volume total de la séance en mètres dans la description.
-    b) **Nage obligatoire** pour chaque série : précise la nage principale — crawl / dos / brasse / papillon / 4 nages / mixte.
-    c) **Matériel obligatoire quand pertinent** : planche, pull-buoy, palmes, plaquettes, tuba frontal, élastique. Ne mets pas de matériel si non pertinent.
-    d) **Récup natation** : toujours exprimée en secondes de repos au bord (ex: "10'' R" = 10 secondes récup entre deux répétitions), PAS en minutes ou en mètres.
-    e) **ÉDUCATIFS / TECHNIQUE — INTERDIT D'ÊTRE VAGUE** : si tu programmes du travail technique, tu DOIS nommer explicitement les éducatifs. "Exercice technique", "travail technique", "drills" seuls sont INTERDITS. Utilise le vocabulaire de la natation :
+    a) **Volume en MÈTRES, pas en minutes.** "m" = distance d'UNE répétition (ex: Repeat n=8, m=50). Laisse "d" absent : une séance de natation ne se compte pas en temps.
+    b) **Nage obligatoire** pour chaque bloc, dans "nage" : crawl / dos / brasse / papillon / 4_nages / mixte.
+    c) **Matériel quand pertinent**, dans "mat" : planche, pull-buoy, palmes, plaquettes, tuba frontal, élastique. Pas de matériel décoratif.
+    d) **Récup natation** : "dr" = secondes de repos au bord (ex: dr=10 pour "10'' R"), jamais des minutes ni des mètres.
+    e) **ÉDUCATIFS / TECHNIQUE — INTERDIT D'ÊTRE VAGUE** : le nom de l'éducatif va dans "l". "Exercice technique", "travail technique", "drills" seuls sont INTERDITS. Utilise le vocabulaire de la natation :
        · Rattrapage (crawl — main avant attend que l'autre la rejoigne)
        · 6 temps / 3 temps (crawl — respiration tous les N coups)
        · Manchot (1 bras, l'autre le long du corps)
@@ -330,16 +337,16 @@ ${profile.experience === 'Débutant' ? `⚠️ DÉBUTANT — Appliquer impérati
        · Jambes avec planche, jambes sans planche (position hydrodynamique)
        · Éducatif dos : rotation épaules, 6 battements 1 bras, etc.
        · Éducatif brasse : 2 coulées 1 bras, brasse jambes planche, etc.
-    f) **Structure type natation** : Échauffement 300-600m varié (mixte, souvent crawl + dos + brasse) → éventuellement bloc technique avec éducatifs NOMMÉS → corps principal (série avec intensité et récups explicites) → Retour au calme 100-300m souple.
-    g) **Exemple de description BIEN rédigée** :
-       "Échauffement 400m : 200m crawl souple + 4x50m (25m poings fermés / 25m normal) crawl, 10'' R.
-        Technique 8x50m éducatifs, 15'' R : 2x50m Rattrapage + 2x50m 6 temps + 2x50m Manchot (1 bras droit, 1 bras gauche) + 2x50m crawl normal sensation de glisse.
-        Série principale 6x100m crawl à allure seuil (1'40''/100m), 20'' R.
-        Retour au calme 200m dos souple."
-    h) **Exemple de description MAUVAISE (à éviter)** :
-       "400m échauffement. Exercice technique 400m. 6x100m crawl. 200m cool." ← trop vague sur la technique, pas de matériel, pas de récup explicite.
+    f) **Structure type natation** : Échauffement 300-600m varié (mixte) → éventuellement bloc technique avec éducatifs NOMMÉS → corps principal (série avec intensité et récups explicites) → Retour au calme 100-300m souple.
+    g) **Exemple de structure natation BIEN construite** :
+       [{"type":"Warmup","m":400,"nage":"mixte","l":"échauffement varié crawl/dos"},
+        {"type":"Repeat","n":4,"m":50,"nage":"crawl","dr":10,"l":"25m poings fermés / 25m normal"},
+        {"type":"Repeat","n":6,"m":50,"nage":"crawl","dr":15,"l":"éducatif Rattrapage"},
+        {"type":"Repeat","n":6,"m":100,"nage":"crawl","p100":"1:40","dr":20,"l":"série seuil"},
+        {"type":"Cooldown","m":200,"nage":"dos","l":"souple"}]
+    h) **À éviter** : {"type":"Active","m":400,"l":"exercice technique"} ← éducatif non nommé, pas de récup, pas de nage.
 
-11. **Champ "why" OBLIGATOIRE** — c'est le SEUL endroit où tu expliques le pourquoi de la séance. La "description" reste purement factuelle.
+11. **Champ "why" OBLIGATOIRE** — c'est le SEUL endroit où tu expliques le pourquoi de la séance. La structure et ses libellés restent purement factuels.
 ${buildWhyInstruction(profile.experience)}
 
 ## FORMAT DE RÉPONSE
@@ -349,10 +356,20 @@ Chaque objet contient exactement :
 - "sportType"       (string) : l'un de ${activeSports.join(", ")}
 - "title"           (string) : titre court (ex: "Endurance Z2 vélo")
 - "workoutType"     (string) : l'un de ["Endurance", "Tempo", "Interval", "Recovery", "Long", "Strength"]
-- "durationMinutes" (number) : durée totale en minutes (respecter le max du créneau)
+- "durationMinutes" (number) : durée totale en minutes. Doit être ÉGALE à la somme des durées de tes blocs (elle sert de repli pour la natation et le renforcement, qui ne se comptent pas en temps).
 - "plannedTSS"      (number) : TSS prévu pour cette séance
-- "description"     (string) : description technique complète (échauffement, corps, retour au calme, avec valeurs de zones/watts)
+- "structure"       (array)  : les blocs de la séance (voir règle 9)
 - "why"             (string) : justification pédagogique de la séance (voir règle 11)
+
+Exemple de structure vélo — noter le motif à trois phases déplié en blocs simples,
+et les durées reprises telles quelles sans être ajustées pour tomber sur un total :
+[{"type":"Warmup","d":1200,"w":160,"l":"progressif Z1-Z2, cadence libre"},
+ {"type":"Active","d":900,"w":224,"l":"force, cadence 50-60 RPM"},
+ {"type":"Active","d":300,"w":177,"l":"vélocité, cadence >95 RPM"},
+ {"type":"Rest","d":600,"w":177,"l":"récupération entre blocs"},
+ {"type":"Active","d":900,"w":224,"l":"force, cadence 50-60 RPM"},
+ {"type":"Active","d":300,"w":177,"l":"vélocité, cadence >95 RPM"},
+ {"type":"Cooldown","d":900,"w":135,"l":""}]
 
 ## JSON :
 `.trim();
@@ -365,7 +382,7 @@ Chaque objet contient exactement :
         workoutType:     string;
         durationMinutes: number;
         plannedTSS:      number;
-        description:     string;
+        structure:       unknown;
         why:             string;
     };
 
@@ -380,10 +397,10 @@ Chaque objet contient exactement :
                 "workoutType":     { type: "STRING", enum: ["Endurance", "Tempo", "Interval", "Recovery", "Long", "Strength"] },
                 "durationMinutes": { type: "NUMBER" },
                 "plannedTSS":      { type: "NUMBER" },
-                "description":     { type: "STRING" },
+                "structure":       COMPACT_STRUCTURE_SCHEMA,
                 "why":             { type: "STRING" },
             },
-            required: ["dayOffset", "sportType", "title", "workoutType", "durationMinutes", "plannedTSS", "description", "why"],
+            required: ["dayOffset", "sportType", "title", "workoutType", "durationMinutes", "plannedTSS", "structure", "why"],
         },
     };
 
@@ -403,11 +420,18 @@ Chaque objet contient exactement :
     await atomicIncrementTokenCount(tokensWorkouts);
     if (!Array.isArray(rawWorkouts)) throw new Error('Réponse IA invalide : tableau attendu.');
 
-    // ── Validation post-IA : filtrer / capper les séances hors programme ──
+    // ── Validation post-IA : filtrer les séances hors programme ──
+    // La durée n'est plus rabotée ici : elle découle désormais de la structure,
+    // et c'est `fitStructureToSlot` qui ramène la SÉANCE dans le créneau (en
+    // retirant des répétitions), de sorte que contenu et durée restent d'accord.
+    // On ne retient donc à ce stade que le plafond applicable au jour.
     const tFilter0 = performance.now();
     const allowedSlots = buildAllowedSlots(weeklyAvailability, activeSports);
-    const aiResponse = (rawWorkouts as AIWorkout[]).filter((w) => {
+    const aiResponse: Array<{ w: AIWorkout; slotMaxMinutes: number | null }> = [];
+
+    for (const w of rawWorkouts as AIWorkout[]) {
         const taperInfo = taperPlan.get(w.dayOffset);
+
         // Exception "déblocage obligatoire" : on laisse passer quel que soit le
         // programme de dispo, à condition que le sport corresponde à la course.
         // Pour les courses multi-disciplines (triathlon, duathlon), on accepte
@@ -419,50 +443,56 @@ Chaque objet contient exactement :
                 ? (w.sportType === 'cycling' || w.sportType === 'running' || w.sportType === 'swimming')
                 : w.sportType === objSport;
             if (sportMatches) {
-                if (w.durationMinutes > taperInfo.rule.maxDurationMin) {
-                    w.durationMinutes = taperInfo.rule.maxDurationMin;
-                }
-                return true;
+                aiResponse.push({ w, slotMaxMinutes: taperInfo.rule.maxDurationMin });
+                continue;
             }
         }
 
         const dayRule = allowedSlots.get(w.dayOffset);
-        if (!dayRule) return false;
-        if (!dayRule.sports.has(w.sportType)) return false;
+        if (!dayRule) continue;
+        if (!dayRule.sports.has(w.sportType)) continue;
 
-        const maxMin = dayRule.maxMinutes[w.sportType];
-        if (maxMin != null && w.durationMinutes > maxMin) {
-            w.durationMinutes = maxMin;
-        }
-        if (taperInfo && w.durationMinutes > taperInfo.rule.maxDurationMin) {
-            w.durationMinutes = taperInfo.rule.maxDurationMin;
-        }
-        return true;
-    });
+        const slotMax = dayRule.maxMinutes[w.sportType] ?? null;
+        const taperMax = taperInfo?.rule.maxDurationMin ?? null;
+        const slotMaxMinutes = slotMax != null && taperMax != null
+            ? Math.min(slotMax, taperMax)
+            : (slotMax ?? taperMax);
+
+        aiResponse.push({ w, slotMaxMinutes });
+    }
 
     console.log(`[week-gen:AI] c) filtre/validation: ${ms(tFilter0)}ms — ${aiResponse.length}/${rawWorkouts.length} séances retenues`);
 
-    // Structuration en parallèle des descriptions via un second appel IA.
-    // La fonction renvoie un PlannedData complet (cibles top-level + structure).
-    // Échec individuel → PlannedData minimal (description conservée, structure: []).
-    const tCall20 = performance.now();
-    const structuredWorkouts = await Promise.all(
-        aiResponse.map(async (w) => {
-            const { plannedData, tokensUsed } = await structureSessionDescription({
-                description:     w.description,
-                sportType:       w.sportType,
-                durationMinutes: w.durationMinutes,
-                plannedTSS:      w.plannedTSS,
-                why:             w.why?.trim() || null,
-                profile,
-            });
-            return { w, plannedData, tokensUsed };
-        })
-    );
-    const totalStructureTokens = structuredWorkouts.reduce((s, x) => s + x.tokensUsed, 0);
-    console.log(`[week-gen:AI] d) Gemini structuration (${aiResponse.length} appels //): ${ms(tCall20)}ms — ${totalStructureTokens} tokens`);
+    // Assemblage du PlannedData : calcul pur, aucun second appel au modèle.
+    // La structure vient directement de l'appel ci-dessus ; il ne reste qu'à la
+    // déplier, la réparer si besoin, la ramener dans le créneau, puis en dériver
+    // la durée, les cibles dominantes et le texte affiché.
+    const tBuild0 = performance.now();
+    const structuredWorkouts = aiResponse.map(({ w, slotMaxMinutes }) => {
+        const { plannedData, issues, adjustedToSlot } = buildPlannedDataFromStructure({
+            rawStructure:            w.structure,
+            sportType:               w.sportType,
+            slotMinutes:             slotMaxMinutes,
+            fallbackDurationMinutes: slotMaxMinutes != null
+                ? Math.min(w.durationMinutes, slotMaxMinutes)
+                : w.durationMinutes,
+            plannedTSS:              w.plannedTSS,
+            why:                     w.why?.trim() || null,
+        });
 
-    if (totalStructureTokens > 0) await atomicIncrementTokenCount(totalStructureTokens);
+        if (issues.length > 0) {
+            console.warn(
+                `[week-gen:struct] ${w.sportType} J${w.dayOffset} "${w.title}" — ${issues.length} anomalie(s) : `
+                + issues.map(i => `${i.code}${i.blockIndex != null ? `#${i.blockIndex}` : ''}`).join(', '),
+            );
+        }
+        if (adjustedToSlot) {
+            console.log(`[week-gen:struct] ${w.sportType} J${w.dayOffset} ramenée à ${plannedData.durationMinutes} min (créneau ${slotMaxMinutes} min)`);
+        }
+
+        return { w, plannedData };
+    });
+    console.log(`[week-gen:AI] d) assemblage structure (${aiResponse.length} séances, 0 appel IA): ${ms(tBuild0)}ms`);
     console.log(`[week-gen:AI] ✓ CreateWorkoutForWeek TOTAL: ${ms(tStart)}ms`);
 
     return structuredWorkouts.map(({ w, plannedData }) => {

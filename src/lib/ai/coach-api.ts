@@ -1,7 +1,8 @@
 import { Profile } from "../data/DatabaseTypes";
 import { SportType } from "../data/type";
 import { Workout } from "../data/DatabaseTypes";
-import { structureSessionDescription } from "./structure-session";
+import { COMPACT_STRUCTURE_SCHEMA } from "../structure/schema";
+import { buildPlannedDataFromStructure } from "../structure/planned-data";
 import { buildCoachRoleIntro } from "./coach-persona";
 
 // Lecture de la clé API depuis les variables d'environnement du serveur
@@ -141,32 +142,31 @@ function buildSportZonesContext(profile: Profile, sportType: SportType): string 
 function getSportRules(sportType: SportType): string {
     if (sportType === 'swimming') {
         return `NATATION — RÈGLES OBLIGATOIRES :
-- Volume en MÈTRES, jamais en minutes. Toujours indiquer le TOTAL de la séance (ex: 2400m) et la distance de CHAQUE section.
-- Chaque série doit préciser : nombre × distance (ex: "8x50m"), la NAGE (crawl/dos/brasse/papillon/4 nages/mixte), l'ALLURE CIBLE ou zone (ex: "allure Z3" ou "1'40''/100m"), et la RÉCUP au bord en secondes (ex: "15'' R").
-- Travail technique : NOMME précisément les éducatifs (Rattrapage, 6 temps, Manchot, Catch-up, Sculls, Poings fermés, Jambes avec planche). INTERDIT : "éducatifs variés", "travail technique", "prise d'eau", sans spécifier l'éducatif précis.
-- Matériel : préciser planche/pull-buoy/palmes/plaquettes/tuba quand pertinent.
-- Structure attendue : échauffement varié 300-600m → bloc technique avec éducatifs nommés → corps principal (séries avec intensité + récup) → retour au calme 100-300m.
+- Volume en MÈTRES : "m" = distance d'UNE répétition (Repeat n=8, m=50 pour un 8x50m). Laisse "d" absent, une séance de natation ne se compte pas en temps.
+- Chaque bloc précise la NAGE dans "nage" (crawl/dos/brasse/papillon/4_nages/mixte), la cible dans "p100" (allure /100m, format "M:SS") sinon "hr", et la RÉCUP au bord dans "dr" en secondes.
+- Travail technique : NOMME l'éducatif dans "l" (Rattrapage, 6 temps, Manchot, Catch-up, Sculls, Poings fermés, Jambes avec planche). INTERDIT : "éducatifs variés", "travail technique", "prise d'eau" sans préciser lequel.
+- Matériel dans "mat" : planche/pull-buoy/palmes/plaquettes/tuba quand pertinent.
+- Enchaînement attendu : échauffement varié 300-600m → bloc technique avec éducatifs nommés → corps principal (séries avec intensité + récup) → retour au calme 100-300m.
 
-EXEMPLE DE DESCRIPTION ATTENDUE pour une séance technique 60 min (~2400m total) :
-"Échauffement 600m : 300m crawl souple en respi 3 temps + 6x50m 4 nages (25m éducatif / 25m nage complète), 15'' R. Bloc technique 8x50m crawl avec palmes (2x Rattrapage + 2x 6 temps + 2x Poings fermés + 2x crawl complet glisse maximale), 20'' R. Corps principal 6x100m crawl à allure Z3 (1'40''/100m), 20'' R. Retour au calme 200m dos souple."
-
-Ton de la description : technique, directe, sans remplissage littéraire. Cibles : allure /100m en priorité, fallback FC, dernier recours RPE.`;
+EXEMPLE pour une séance technique (~2400m) :
+[{"type":"Warmup","m":600,"nage":"mixte","l":"crawl souple respi 3 temps"},
+ {"type":"Repeat","n":8,"m":50,"nage":"crawl","mat":["palmes"],"dr":20,"l":"éducatif Rattrapage puis 6 temps"},
+ {"type":"Repeat","n":6,"m":100,"nage":"crawl","p100":"1:40","dr":20,"l":"corps principal Z3"},
+ {"type":"Cooldown","m":200,"nage":"dos","l":"souple"}]`;
     }
     if (sportType === 'cycling') {
         return `CYCLISME — RÈGLES :
-- Cibles en WATTS en priorité (depuis les zones fournies), fallback FC, dernier recours RPE.
-- Structure : échauffement progressif, corps avec intervalles (durée + watts/zone explicites), récups entre intervalles, retour au calme.
-- Format séries : "NxD min Z? (XXX-YYY W), R:Xmin Z?".
-- Toujours spécifier la durée de chaque section (ex: "Échauffement 15 min") et les valeurs exactes des cibles.`;
+- Cibles en WATTS ("w", depuis les zones fournies) en priorité, fallback "hr", dernier recours "rpe".
+- Enchaînement : échauffement progressif → corps avec intervalles → récups → retour au calme.
+- Chaque bloc porte sa durée "d" en SECONDES. Une série est un Repeat : n, d + w pour l'effort, dr + wr pour la récup.`;
     }
     if (sportType === 'running') {
         return `COURSE À PIED — RÈGLES :
-- Cibles en ALLURE (min/km) en priorité, fallback FC, dernier recours RPE.
-- Structure : échauffement, corps avec intervalles, récups, retour au calme.
-- Format séries : "NxD min à X:XX/km, R:Xmin trot".
-- Toujours spécifier la durée de chaque section et les allures exactes.`;
+- Cibles en ALLURE ("p", format "M:SS" au km) en priorité, fallback "hr", dernier recours "rpe".
+- Enchaînement : échauffement → corps avec intervalles → récups → retour au calme.
+- Chaque bloc porte sa durée "d" en SECONDES. Une série est un Repeat : n, d + p pour l'effort, dr + pr pour la récup en trot.`;
     }
-    return `Structure : échauffement, corps de séance, retour au calme. Cibles en RPE ou FC.`;
+    return `Enchaînement : échauffement, corps de séance, retour au calme. Cibles en "rpe" ou "hr". Renforcement : "sets", "reps", "kg".`;
 }
 
 // Résultat d'un appel Gemini avec les tokens consommés
@@ -282,7 +282,14 @@ export async function generateSingleWorkoutFromAI(
     surroundingWorkouts: Record<string, string>,
     oldWorkout?: Workout,
     currentBlockFocus: string = "General Fitness",
-    userInstruction?: string
+    userInstruction?: string,
+    /**
+     * Durée explicitement demandée par l'utilisateur. Quand elle est fournie,
+     * elle prime sur la disponibilité du créneau et devient la cible que la
+     * structure doit atteindre — au lieu d'être plaquée sur la séance APRÈS
+     * génération, ce qui désaccordait la durée affichée et le contenu réel.
+     */
+    targetDurationMinutes?: number,
 ): Promise<{ workout: Omit<Workout, 'userId' | 'weekId'>; tokensUsed: number }> {
 
     // Extraction des dispos
@@ -296,6 +303,10 @@ export async function generateSingleWorkoutFromAI(
     } else if (typeof slot === 'number') {
         availability = slot;
     }
+
+    const targetDuration = targetDurationMinutes != null && targetDurationMinutes > 0
+        ? Math.round(targetDurationMinutes)
+        : availability;
 
     const zonesContext = buildSportZonesContext(profile, sportType);
     const sportRules = getSportRules(sportType);
@@ -320,18 +331,23 @@ LANGUE : français. Termes techniques autorisés (FTP, TSS, RPE, VO2max).
 ${sportRules}
 
 RÈGLES :
-- "description" = consignes d'exécution factuelles : durées, distances, cibles chiffrées (watts/allure/FC), récups, répétitions. Style télégraphique. Pas d'intro pédagogique, pas de justification du pourquoi, pas de conclusion.
+- **"structure" EST la séance** : une liste de blocs dans l'ordre d'exécution. Il n'y a pas de description en prose — le texte lu par l'athlète est écrit à partir de ta structure. Ce qui n'est pas dans un bloc n'existe pas.
+- Types de blocs : "Warmup", "Active", "Rest", "Cooldown", "Repeat". Un "Repeat" porte DEUX phases au maximum (effort + récup intercalée). Un motif à trois phases ou plus se déplie en blocs simples successifs — ne raccourcis JAMAIS une durée pour la faire entrer dans un Repeat.
+- **Dès que n>1, "dr" est OBLIGATOIRE et strictement positif** : une série sans récupération entre les répétitions n'est pas une série, c'est un bloc continu. Un 4×5 min VO2max sans récup est infaisable. "dr":0 uniquement sur un bloc qui n'est pas une série.
+- Dans un Repeat, la phase active est toujours la plus intense, la récupération la moins intense.
+- "d" et "dr" en SECONDES, en valeurs rondes (multiple de 60 au-delà de 5 min).
+- "l" = libellé court portant la consigne qualitative (cadence, éducatif nommé, sensation). Tout ce qui n'est pas un nombre vit là.
+- N'écris que les champs pertinents au sport ; un champ absent vaut mieux qu'un champ nul.
 - ${buildWhyInstruction(profile.experience)}
-- Cohérence durée : la somme des durées des blocs doit ≈ durée totale demandée (±5%).
 - Pas de "N/A", "au choix", "varié" non précisé. Tout explicite.
-- Longueur : 150-400 caractères (jusqu'à 600 pour natation technique).
-- Adapte au niveau athlète (${profile.experience ?? 'Intermédiaire'}) et au focus. Respecte la durée max.
+- **DURÉE : la somme de tes blocs EST la durée de la séance, et elle doit valoir ${targetDuration} min à ±5 %.** Ni au-dessus, ni à moitié : une séance de 20 min quand on t'en demande ${targetDuration} est une erreur. Écris la séance ENTIÈRE — échauffement, corps de séance avec toutes ses répétitions, retour au calme. Reporte la même valeur dans "duration". Seule exception : si la demande ci-dessous te demande explicitement d'alléger ou de raccourcir la séance, suis-la.
+- Adapte au niveau athlète (${profile.experience ?? 'Intermédiaire'}) et au focus.
 
 FORMAT DE SORTIE : JSON uniquement, validé par le schéma. Pas de texte avant/après.`;
 
     const userPrompt = `DATE: ${date}
 SPORT: ${sportType.toUpperCase()}
-DISPO MAX: ${availability} min
+DURÉE CIBLE: ${targetDuration} min (somme des blocs, ±5%)
 FOCUS DU BLOC: ${currentBlockFocus}
 NIVEAU: ${profile.experience ?? 'Intermédiaire'}
 
@@ -358,10 +374,10 @@ Génère UN objet JSON pour la séance.`;
                     "duration": { "type": "NUMBER" }, // -> plannedData.durationMinutes
                     "tss": { "type": "NUMBER" }, // -> plannedData.plannedTSS
                     "mode": { "type": "STRING", "enum": ["Outdoor", "Indoor"] },
-                    "description": { "type": "STRING", "description": "Description technique unique. Jamais N/A, jamais vide." },
+                    "structure": COMPACT_STRUCTURE_SCHEMA,
                     "why": { "type": "STRING", "description": "UNE phrase : pourquoi cette séance et ce qu'elle travaille, adaptée au niveau de l'athlète. Jamais N/A, jamais vide." }
                 },
-                "required": ["title", "type", "duration", "mode", "description", "why"]
+                "required": ["title", "type", "duration", "mode", "structure", "why"]
             }
         },
         "required": ["workout"]
@@ -388,39 +404,27 @@ Génère UN objet JSON pour la séance.`;
 
     const { data: resultData, tokensUsed } = await callGeminiAPI(payload, `single/${sportType}/gen`);
 
-    const w = (resultData as { workout: { title: string; type: string; duration: number; tss?: number; mode: 'Outdoor' | 'Indoor'; description: string; why?: string } }).workout;
+    const w = (resultData as { workout: { title: string; type: string; duration: number; tss?: number; mode: 'Outdoor' | 'Indoor'; structure?: unknown; why?: string } }).workout;
 
-    const rawDesc = w.description ?? '';
-    const description = sanitizeDescription(rawDesc);
     const why = sanitizeDescription(w.why);
 
-    // Second appel IA : structuration → PlannedData complet (cibles top-level + structure).
-    // Si pas de description, on construit un PlannedData minimal sans appel IA.
-    const { plannedData, tokensUsed: structureTokens } = description
-        ? await structureSessionDescription({
-            description,
-            sportType,
-            durationMinutes: w.duration,
-            plannedTSS: w.tss ?? null,
-            why,
-            profile,
-        })
-        : {
-            plannedData: {
-                durationMinutes: w.duration,
-                targetPowerWatts: null,
-                targetPaceMinPerKm: null,
-                targetPaceMinPer100m: null,
-                targetHeartRateBPM: null,
-                distanceKm: null,
-                distanceMeters: null,
-                plannedTSS: w.tss ?? null,
-                description,
-                why,
-                structure: [],
-            },
-            tokensUsed: 0,
-        };
+    // Assemblage local : la structure vient de l'appel ci-dessus, la durée, les
+    // cibles dominantes et le texte affiché s'en déduisent. Aucun second appel.
+    const { plannedData, issues } = buildPlannedDataFromStructure({
+        rawStructure:            w.structure,
+        sportType,
+        slotMinutes:             targetDuration,
+        fallbackDurationMinutes: targetDuration,
+        plannedTSS:              w.tss ?? null,
+        why,
+    });
+
+    if (issues.length > 0) {
+        console.warn(
+            `[single-gen:struct] ${sportType} ${date} "${w.title}" — `
+            + issues.map(i => `${i.code}${i.blockIndex != null ? `#${i.blockIndex}` : ''}`).join(', '),
+        );
+    }
 
     return {
         workout: {
@@ -434,7 +438,7 @@ Génère UN objet JSON pour la séance.`;
             plannedData,
             completedData: null,
         },
-        tokensUsed: tokensUsed + structureTokens,
+        tokensUsed,
     };
 }
 

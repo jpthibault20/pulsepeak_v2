@@ -17,6 +17,7 @@ import { createCompletedData } from '@/lib/utils';
 
 import { FeedbackForm } from '@/components/features/workout/FeedbackForm';
 import { PlannedStructureView } from '@/components/features/workout/PlannedStructureView';
+import { AdherenceCard } from '@/components/features/workout/AdherenceCard';
 import { WorkoutSubHeader } from '@/components/features/workout/detail/WorkoutSubHeader';
 import { WorkoutHero } from '@/components/features/workout/detail/WorkoutHero';
 import { WhyCard } from '@/components/features/workout/detail/WhyCard';
@@ -376,6 +377,7 @@ export default function WorkoutDetailClient({
                                             onAdaptationComplete={() => router.refresh()}
                                         />
                                     )}
+                                    <AdherenceCard workout={workout} />
                                     <PlannedVsActual workout={workout} />
                                     <MetricsGrid tiles={completedMetrics} />
                                     <IntensityCard workout={workout} profile={profile} />
@@ -395,7 +397,7 @@ export default function WorkoutDetailClient({
                                     )}
                                     {planned && (
                                         <CollapsibleSection title="Ce qui était prévu">
-                                            <PlannedStructureView description={planned.description} structure={planned.structure} />
+                                            <PlannedStructureView description={planned.description} structure={planned.structure} durationMinutes={planned.durationMinutes} />
                                         </CollapsibleSection>
                                     )}
                                 </>
@@ -414,7 +416,7 @@ export default function WorkoutDetailClient({
                             {(isPending || isMissed) && (
                                 <>
                                     <WhyCard why={planned?.why} />
-                                    <PlannedStructureView description={planned?.description} structure={planned?.structure} />
+                                    <PlannedStructureView description={planned?.description} structure={planned?.structure} durationMinutes={planned?.durationMinutes} />
                                 </>
                             )}
                         </>
