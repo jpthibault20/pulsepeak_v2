@@ -77,7 +77,8 @@
       "Bash(mv _tmp-laps.ts _tmp-laps.mts)",
       "Bash(npx --yes tsx _tmp-laps.mts)",
       "Bash(cp src/components/features/workout/detail/lap-analysis.ts _tmp-lap-analysis.mts)",
-      "Bash(sed -i \"s|from './src/components/features/workout/detail/lap-analysis.js'|from './_tmp-lap-analysis.mjs'|\" _tmp-laps.mts)"
+      "Bash(sed -i \"s|from './src/components/features/workout/detail/lap-analysis.js'|from './_tmp-lap-analysis.mjs'|\" _tmp-laps.mts)",
+      "PowerShell(npx tsc --noEmit -p tsconfig.json)"
     ]
   }
 }

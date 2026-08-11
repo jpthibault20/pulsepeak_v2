@@ -73,16 +73,24 @@ export default function AppClientWrapper({ initialProfile, initialSchedule, init
     const moisParam = searchParams.get('mois');
     const jourParam = searchParams.get('jour');
 
+    // Les patches se composent via une ref, PAS via `searchParams` : deux appels
+    // dans le même tick (changer de mois met à jour `mois` ET `jour`) partiraient
+    // sinon du même snapshot périmé, et le second `replace` écraserait le premier
+    // — le mois revenait alors à sa valeur d'origine.
+    const paramsRef = useRef(searchParams.toString());
+    useEffect(() => { paramsRef.current = searchParams.toString(); }, [searchParams]);
+
     const updateUrlState = useCallback((patch: Record<string, string | null>) => {
-        const next = new URLSearchParams(searchParams.toString());
+        const next = new URLSearchParams(paramsRef.current);
         for (const [k, v] of Object.entries(patch)) {
             if (v === null) next.delete(k);
             else next.set(k, v);
         }
+        paramsRef.current = next.toString();
         // replace + scroll:false : changer de mois ne doit ni empiler une entrée
         // d'historique ni renvoyer l'utilisateur en haut de page.
         router.replace(`/?${next.toString()}`, { scroll: false });
-    }, [router, searchParams]);
+    }, [router]);
 
     // --- State Management ---
     const startView: View = initialProfile.firstName

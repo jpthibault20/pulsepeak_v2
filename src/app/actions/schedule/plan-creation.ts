@@ -121,7 +121,7 @@ export async function CreateAdvancedPlan(
     const [existingAllWorkouts, existingAllWeeks, existingObjectives] = await Promise.all([
         getWorkout(), getWeek(), getObjectives(),
     ]);
-    const realCompletion = computeAvgCompletion(existingAllWorkouts ?? [], existingAllWeeks ?? [], firstWeek.id);
+    const realCompletion = computeAvgCompletion(existingAllWorkouts ?? [], existingAllWeeks ?? [], updatedBlocks, firstWeek.id);
     const firstWeekStart = parseLocalDate(firstBlock.startDate);
     const firstWeekEnd = addDays(firstWeekStart, 13); // cette semaine + semaine suivante
     const todayStr = format(new Date(), 'yyyy-MM-dd');
@@ -253,7 +253,7 @@ export async function CreatePlanToObjective(userID: string, planStartDate: strin
         return objDate >= firstWeekStart && objDate <= firstWeekEnd;
     });
 
-    const realCompletion2 = computeAvgCompletion(existingWorkouts ?? [], existingWeeks ?? [], firstWeek.id);
+    const realCompletion2 = computeAvgCompletion(existingWorkouts ?? [], existingWeeks ?? [], updatedBlocks, firstWeek.id);
     const firstWeekWorkouts = await CreateWorkoutForWeek(profile, newPlan, firstBlock, firstWeek, null, realCompletion2, weeklyAvailability ?? profile.weeklyAvailability, relevantObjectives);
 
     const newWorkouts: Workout[] = [...firstWeekWorkouts];
