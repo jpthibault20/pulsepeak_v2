@@ -30,6 +30,7 @@ interface CalendarViewProps {
     onAddManualWorkout: (workout: Workout) => void;
     onCreatePlannedWorkoutAI: (dateStr: string, sportType: SportType, duration: number, comment: string) => Promise<void>;
     onSaveObjective: (obj: Objective) => Promise<void>;
+    onDeleteObjective: (id: string) => Promise<void>;
     onRefresh: () => void;
     onMoveWorkout: (workoutId: string, newDateStr: string) => Promise<void>;
     onSyncStrava?: () => void;
@@ -52,6 +53,7 @@ export function CalendarView({
     onAddManualWorkout,
     onCreatePlannedWorkoutAI,
     onSaveObjective,
+    onDeleteObjective,
     onRefresh,
     onMoveWorkout,
     onSyncStrava,
@@ -148,6 +150,12 @@ export function CalendarView({
         } finally {
             setIsSavingObjective(false);
         }
+    };
+
+    const handleDeleteObjective = async (id: string) => {
+        await onDeleteObjective(id);
+        setShowObjectiveModal(false);
+        setEditingObjective(null);
     };
 
     const goToMonthDay = (newYear: number, newMonth: number) => {
@@ -548,6 +556,7 @@ export function CalendarView({
                     isOpen={showObjectiveModal}
                     onClose={() => { setShowObjectiveModal(false); setEditingObjective(null); }}
                     onSave={handleSaveObjective}
+                    onDelete={handleDeleteObjective}
                     initial={editingObjective}
                     initialDate={editingObjective ? undefined : (dateForAction ? `${dateForAction.getFullYear()}-${String(dateForAction.getMonth() + 1).padStart(2, '0')}-${String(dateForAction.getDate()).padStart(2, '0')}` : undefined)}
                     isSaving={isSavingObjective}

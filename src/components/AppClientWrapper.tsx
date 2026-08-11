@@ -578,6 +578,7 @@ export default function AppClientWrapper({ initialProfile, initialSchedule, init
                                 onAddManualWorkout={handleAddManualWorkout}
                                 onCreatePlannedWorkoutAI={handleCreatePlannedWorkoutAI}
                                 onSaveObjective={handleSaveObjective}
+                                onDeleteObjective={handleDeleteObjective}
                                 onRefresh={refreshData}
                                 onMoveWorkout={handleMoveWorkout}
                                 onSyncStrava={handleSyncStrava}
@@ -599,6 +600,8 @@ export default function AppClientWrapper({ initialProfile, initialSchedule, init
                                 onRefresh={refreshData}
                                 onGenerate={handleGenerate}
                                 onGenerateToObjective={handleGenerateToObjective}
+                                onSaveObjective={handleSaveObjective}
+                                onDeleteObjective={handleDeleteObjective}
                             />
                         </div>
                     )}

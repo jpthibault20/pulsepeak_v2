@@ -159,6 +159,7 @@ export const Goals: React.FC<GoalsProps> = ({ objectives, onSaveObjective, onDel
                 isOpen={showObjectiveModal}
                 onClose={() => setShowObjectiveModal(false)}
                 onSave={handleSaveObjective}
+                onDelete={onDeleteObjective ? handleDelete : undefined}
                 initial={editingObjective}
                 isSaving={isSavingObj}
             />
