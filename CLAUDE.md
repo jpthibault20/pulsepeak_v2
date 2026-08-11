@@ -17,11 +17,38 @@ npm run db:push          # push Drizzle schema to Supabase (dev flow)
 npm run db:generate      # generate SQL migrations from schema
 npm run db:migrate       # apply migrations
 npm run db:studio        # Drizzle Studio UI
+
+npm run test             # Vitest, one-shot
+npm run test:watch       # Vitest, watch mode
 ```
 
-No test runner is configured — there is no `test` script and no test files in the repo. Verify changes via `npm run build` (type-check) + `npm run lint` + manual testing in `npm run dev`.
-
 `drizzle.config.ts` loads `DATABASE_URL` from `.env.local` via `dotenv`. All other env vars (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `GEMINI_API_KEY`, `STRAVA_CLIENT_ID`/`SECRET`, `NEXT_PUBLIC_BASE_URL`) are required at runtime — see README for the full list.
+
+## Testing
+
+### Tests ship with the change — always, without being asked
+
+Any code modification (bug fix, refactor, new feature) includes its test update **in the same pass**. This is not an optional follow-up step:
+
+1. **The touched module already has a `.test.ts`** → update it in the same edit. New behaviour gets new cases; changed behaviour gets adjusted assertions. State in the summary which existing expectations changed and why — an assertion quietly rewritten to match new output is how a regression ships unnoticed.
+2. **The touched module is a pure function with no test file** → create `<module>.test.ts` next to it, covering at minimum the new/changed path plus its edge cases (empty, zero, null, out-of-range).
+3. **Behaviour removed** → delete its tests too.
+4. **Before reporting done** → run `npm run test`, `npm run lint` and `npm run build`, and report the real counts. Never announce green without having run it.
+
+**Assert what the code *should* do, not what it currently does.** If a new test exposes a pre-existing bug, do not weaken the assertion to make it pass: report the bug with a proposed fix and let the user decide. (This is how the `1:60` pace-formatting bug in `computeTSS.ts` was found.)
+
+### Scope
+
+In scope: **pure functions** — calculations, conversions, mappers, formatters, guard clauses, date arithmetic. Out of scope: React rendering, Server Actions, `crud.ts`, and anything that calls Gemini / Supabase / Strava over the network. If a feature lands mostly in those layers, pull the decision logic into a pure helper (`_internals/`, `src/lib/stats/`) and test that helper — never mock half the app to reach a branch.
+
+### Conventions
+
+- **Vitest**, configured in `vitest.config.mts`: `node` environment, `@` → `src/` alias, `TZ` pinned to `Europe/Paris` (several calculations build local `Date`s, so an unpinned timezone makes the suite machine-dependent).
+- Test files follow `src/**/*.test.ts`, colocated with the module under test.
+- Shared object builders live in **`src/test/fixtures.ts`** (`makeProfile`, `makeWorkout`, `makeCompletedData`, `makePlannedData`, `makeZones`, `makeObjective`, `makeBlock`/`makeWeek`, `makeCyclingMetrics`/`makeRunningMetrics`, `makeLap`, `makeSlot`). Each returns a minimal valid object overridable field by field — **add new fixtures there rather than redeclaring them in a test file**, so a new mandatory domain field only has to be fixed in one place.
+- Functions reading `new Date()` (`computePMC`, `computeWeeklyTSS`) are tested with `vi.useFakeTimers()` + `vi.setSystemTime()`.
+- A module importing `crud.ts` is tested by mocking it: `vi.mock('@/lib/data/crud', …)` — see `strava-mapper.test.ts`.
+- Test names are in French, like the rest of the codebase, and describe the rule being enforced ("retient la minute quand l'arrondi atteint 60 s"), not the function's name.
 
 ## Architecture
 

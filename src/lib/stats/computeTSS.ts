@@ -47,22 +47,31 @@ function paceToSeconds(pace: string | null | undefined): number | null {
     return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
 }
 
+/**
+ * Formate des secondes en allure « m:ss ».
+ * L'arrondi des secondes peut atteindre 60 (ex. 119.6 s) : on retient alors la
+ * minute, sinon on afficherait « 1:60 ».
+ */
+function formatPaceSeconds(totalSeconds: number): string {
+    let m = Math.floor(totalSeconds / 60);
+    let s = Math.round(totalSeconds - m * 60);
+    if (s === 60) {
+        m += 1;
+        s = 0;
+    }
+    return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
 /** Convertit une vitesse (km/h) en allure mm:ss/km. */
 export function speedKmhToPaceMinPerKm(speedKmh: number | null | undefined): string | null {
     if (!speedKmh || speedKmh <= 0) return null;
-    const secPerKm = 3600 / speedKmh;
-    const m = Math.floor(secPerKm / 60);
-    const s = Math.round(secPerKm - m * 60);
-    return `${m}:${s.toString().padStart(2, '0')}`;
+    return formatPaceSeconds(3600 / speedKmh);
 }
 
 /** Convertit une vitesse (m/s) en allure mm:ss/100m. */
 export function speedMsToPace100m(speedMs: number | null | undefined): string | null {
     if (!speedMs || speedMs <= 0) return null;
-    const secPer100 = 100 / speedMs;
-    const m = Math.floor(secPer100 / 60);
-    const s = Math.round(secPer100 - m * 60);
-    return `${m}:${s.toString().padStart(2, '0')}`;
+    return formatPaceSeconds(100 / speedMs);
 }
 
 // ─── Dérivation des seuils depuis le profil ───────────────────────────────────

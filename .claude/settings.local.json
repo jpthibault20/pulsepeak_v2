@@ -78,7 +78,18 @@
       "Bash(npx --yes tsx _tmp-laps.mts)",
       "Bash(cp src/components/features/workout/detail/lap-analysis.ts _tmp-lap-analysis.mts)",
       "Bash(sed -i \"s|from './src/components/features/workout/detail/lap-analysis.js'|from './_tmp-lap-analysis.mjs'|\" _tmp-laps.mts)",
-      "PowerShell(npx tsc --noEmit -p tsconfig.json)"
+      "PowerShell(npx tsc --noEmit -p tsconfig.json)",
+      "PowerShell(npx vitest run src/lib/stats/computePMC.test.ts 2>&1 | Select-Object -Last 45)",
+      "PowerShell(npx vitest run src/lib/stats/computePMC.test.ts 2>&1 | Select-Object -Last 25)",
+      "PowerShell(npx vitest run src/lib/utils.test.ts src/lib/calendar-url.test.ts 2>&1 | Select-Object -Last 40)",
+      "PowerShell(npx vitest run src/app/actions/helpers.test.ts 2>&1 | Select-Object -Last 50)",
+      "PowerShell(npx vitest run src/app/actions/schedule/_internals 2>&1 | Select-Object -Last 50)",
+      "PowerShell(npx vitest run src/lib/stats/intensityScale.test.ts src/lib/stats/classifySession.test.ts 2>&1 | Select-Object -Last 45)",
+      "PowerShell(npx vitest run src/lib/stats/computeDeviation.test.ts 2>&1 | Select-Object -Last 60)",
+      "PowerShell(npx vitest run src/lib/strava-mapper.test.ts 2>&1 | Select-Object -Last 60)",
+      "PowerShell(npm test *)",
+      "Bash(cp \"/c/Users/tjean/AppData/Local/Temp/claude/C--Users-tjean-PROJET-pulsepeak2/f7acc1f0-0982-4cd2-8f7f-d3d8964b71b9/scratchpad/verif.test.ts\" src/__verif.test.ts)",
+      "Bash(npx vitest *)"
     ]
   }
 }
