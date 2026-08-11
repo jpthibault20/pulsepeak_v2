@@ -19,9 +19,10 @@ import { parseLocalDate } from '@/lib/utils';
 import { atomicIncrementTokenCount, getBlock, getWeek, getWorkout } from '@/lib/data/crud';
 import { Block, Objective, Plan, Profile, Week, Workout } from '@/lib/data/DatabaseTypes';
 import type { AvailabilitySlot, SportType } from '@/lib/data/type';
-import { buildCoachRoleIntro, buildWhyInstruction, callGeminiAPI } from '@/lib/ai/coach-api';
+import { buildWhyInstruction, callGeminiAPI } from '@/lib/ai/coach-api';
+import { buildCoachRoleIntro } from '@/lib/ai/coach-persona';
 import { structureSessionDescription } from '@/lib/ai/structure-session';
-import { buildAllowedSlots, buildTaperPlan, formatAvailability, getActiveSports } from '../../helpers';
+import { buildAllowedSlots, buildTaperPlan, formatActiveSportsFr, formatAvailability, getActiveSports } from '../../helpers';
 import { getPreviousWeekSummary } from './ai-context';
 
 
@@ -154,7 +155,7 @@ Tu génères la semaine ${week.weekNumber} d'un bloc de ${block.weekCount} semai
 ## PROFIL ATHLÈTE
 - Niveau : ${profile.experience ?? "Intermédiaire"}
 - CTL actuelle : ${profile.currentCTL}
-- Disciplines actives :${profile.activeSports.cycling ? 'cyclisme' : ''}${profile.activeSports.running ? ', course à pied' : ''}${profile.activeSports.swimming ? ', natation' : ''}
+- Disciplines actives : ${formatActiveSportsFr(profile.activeSports) || 'non définies'}
 ${zonesContext}
 
 ## DISPONIBILITÉS ET PROGRAMME DE LA SEMAINE — PRIORITÉ ABSOLUE

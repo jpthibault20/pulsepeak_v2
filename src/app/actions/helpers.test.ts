@@ -12,6 +12,7 @@ import {
     computeRecoveryWeekTSS,
     computeProgressionPerWeek,
     getActiveSports,
+    formatActiveSportsFr,
     formatAvailability,
     buildTaperPlan,
     buildAllowedSlots,
@@ -131,6 +132,22 @@ describe('getActiveSports', () => {
         expect(getActiveSports({ swimming: false, cycling: false, running: false })).toEqual([]);
         expect(getActiveSports({ swimming: true, cycling: true, running: true }))
             .toEqual(['swimming', 'cycling', 'running']);
+    });
+});
+
+describe('formatActiveSportsFr', () => {
+    it('traduit les disciplines actives en libellés français', () => {
+        expect(formatActiveSportsFr({ swimming: true, cycling: true, running: true }))
+            .toBe('natation, cyclisme, course à pied');
+    });
+
+    it('n’ajoute pas de virgule en tête quand la première discipline est inactive', () => {
+        expect(formatActiveSportsFr({ swimming: false, cycling: false, running: true }))
+            .toBe('course à pied');
+    });
+
+    it('renvoie une chaîne vide si aucune discipline n’est activée', () => {
+        expect(formatActiveSportsFr({ swimming: false, cycling: false, running: false })).toBe('');
     });
 });
 

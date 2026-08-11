@@ -95,11 +95,16 @@ The proxy entry point is **`src/proxy.ts`** (not `middleware.ts`) — Next.js 16
 
 ### AI layer (`src/lib/ai/`)
 
-Single Gemini endpoint (`gemini-2.5-flash`) called from `coach-api.ts`. Two generation modes:
-- Full plan / block generation (called from `CreateAdvancedPlan` in `actions/schedule/plan-creation.ts`) — returns a flat list of `RawAIWorkout` that the server then groups into blocks/weeks using helpers in `actions/helpers.ts` (`computeBlockSkeletons`, `computeWeeklyTSS`, `buildTaperPlan`, etc.).
-- Single workout regeneration — `generateSingleWorkoutFromAI`.
+`coach-api.ts` owns the single Gemini endpoint (`gemini-2.5-flash`) via `callGeminiAPI` — every AI call in the app goes through it. Three prompt sites, each owning its own prompt:
+- **Block / periodization structure** — `CreateBlocks` and `CreateBlocksToObjective` in `actions/schedule/plan-creation.ts`; the returned skeletons are turned into weeks with `actions/helpers.ts` (`computeBlockSkeletons`, `computeWeeklyTSS`, `buildTaperPlan`, etc.).
+- **Week of workouts** — the heavy prompt (zones, availabilities, taper J-x, continuity with previous week) lives in `actions/schedule/_internals/workout-generator.ts` (`CreateWorkoutForWeek`).
+- **Single workout** — `generateSingleWorkoutFromAI` in `coach-api.ts`, called from `actions/schedule/workout-ai.ts`.
 
-The heavy per-week prompt (zones, availabilities, taper J-x, continuity with previous week) lives in `actions/schedule/_internals/workout-generator.ts` (`CreateWorkoutForWeek`). `structure-session.ts` is a separate Gemini call that parses free-text workout descriptions into structured segments.
+`structure-session.ts` is a separate Gemini call that parses free-text workout descriptions into structured segments.
+
+**Coach persona:** `coach-persona.ts` holds `buildCoachRoleIntro(coachType)` — the role line prepended to every prompt, driven by `profiles.coachType` (falls back to `triathlon`). It is a pure, dependency-free module so the chat prompt can use it too; the four prompt builders above plus `chat-prompt.ts` all open on it. Adding a new AI prompt means opening it with `buildCoachRoleIntro`, never with a hand-written role.
+
+`chat-prompt.ts` builds the system prompt of the conversational coach (`/api/chat`); the route only streams. The client sends `coachType` in the `ChatContext` (`ChatView.tsx`, `ChatWidget.tsx`).
 
 **Rate limiting:** `checkAndIncrementAICallLimit()` in `actions/schedule/_internals/rate-limit.ts` uses `atomicIncrementAICallCount` (DB-atomic) and per-day resets (`aiPlanCallsResetDate`, `aiWorkoutCallsResetDate` on `profiles`). Free plan = 3 plan/10 workout calls/day; pro/dev/admin = effectively unlimited. Token usage is tracked separately via `atomicIncrementTokenCount` against `tokenPerMonth`.
 

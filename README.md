@@ -217,9 +217,11 @@ Les autres actions vivent à la racine de `src/app/actions/` : `auth.ts`, `admin
 
 ### Couche IA (`src/lib/ai/`)
 
-- `coach-api.ts` — point d'entrée Gemini unique, personas de coach, génération de plan et de séance
+- `coach-api.ts` — point d'entrée Gemini unique (`callGeminiAPI`) et génération d'une séance seule
+- `coach-persona.ts` — rôle du coach injecté en tête de **tous** les prompts, selon `profiles.coachType`
+- `chat-prompt.ts` — prompt système du coach conversationnel
 - `structure-session.ts` — parsing d'une description libre de séance en segments structurés
-- Le prompt lourd par semaine (zones, disponibilités, taper, continuité) vit dans `actions/schedule/_internals/workout-generator.ts`
+- Le prompt de structure en blocs vit dans `actions/schedule/plan-creation.ts`, le prompt lourd par semaine (zones, disponibilités, taper, continuité) dans `actions/schedule/_internals/workout-generator.ts`
 - `/api/chat` — route Node.js en streaming SSE pour le coach conversationnel
 
 ### Auth & protection des routes

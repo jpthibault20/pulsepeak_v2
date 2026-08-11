@@ -121,6 +121,23 @@ export const getActiveSports = (activeSports: Profile['activeSports']): string[]
         .map(([sport]) => sport);
 };
 
+const SPORT_LABELS_FR: Record<string, string> = {
+    cycling:  'cyclisme',
+    running:  'course à pied',
+    swimming: 'natation',
+};
+
+/**
+ * Liste FR des disciplines actives, prête à être injectée dans un prompt
+ * (ex: "cyclisme, natation"). Chaîne vide si aucune discipline n'est activée —
+ * aux appelants de fournir leur propre repli.
+ */
+export const formatActiveSportsFr = (activeSports: Profile['activeSports']): string => {
+    return getActiveSports(activeSports)
+        .map(sport => SPORT_LABELS_FR[sport] ?? sport)
+        .join(', ');
+};
+
 // Mapping dayOffset (0=Lundi … 6=Dimanche) → clé française
 const DAY_OFFSET_TO_FR = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'] as const;
 
