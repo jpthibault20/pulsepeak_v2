@@ -17,7 +17,9 @@ export const RestDayView: React.FC<{
     workout: Workout;
     profile: Profile;
     nextWorkout: (WorkoutNeighbour & { durationMinutes?: number | null; plannedTSS?: number | null }) | null;
-}> = ({ workout, profile, nextWorkout }) => {
+    /** Query (`?from=…&month=…&day=…`) à conserver en passant à la séance suivante */
+    seanceQuery: string;
+}> = ({ workout, profile, nextWorkout, seanceQuery }) => {
     const atl = Math.round(profile.currentATL ?? 0);
     // Décroissance ATL sur un jour sans charge (constante de temps 7 jours).
     const atlTomorrow = Math.round(atl * Math.exp(-1 / 7));
@@ -45,7 +47,7 @@ export const RestDayView: React.FC<{
 
             {nextWorkout && NextIcon && (
                 <Link
-                    href={`/seance/${nextWorkout.id}`}
+                    href={`/seance/${nextWorkout.id}${seanceQuery}`}
                     className="mt-7 mx-auto max-w-md flex items-center gap-3 px-4 py-3 rounded-xl bg-white dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/50 hover:border-slate-300 dark:hover:border-slate-600 transition-colors text-left"
                 >
                     <div className="flex-1 min-w-0">

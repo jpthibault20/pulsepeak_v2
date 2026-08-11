@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom'; // Import nécessaire pour la téléportation
 import { X } from 'lucide-react';
 import type { Workout } from '@/lib/data/DatabaseTypes';
+import { useSeanceHref } from '@/hooks/useSeanceHref';
 import { WorkoutBadge } from './WorkoutBadge';
 
 interface WorkoutPopoverProps {
@@ -12,6 +13,7 @@ interface WorkoutPopoverProps {
 }
 
 export function WorkoutPopover({ workouts, onClose, enableDrag = false }: WorkoutPopoverProps) {
+    const seanceHref = useSeanceHref('calendar');
     // 1. Une référence pour savoir "où" on doit s'accrocher dans le calendrier
     const anchorRef = useRef<HTMLDivElement>(null);
     // 2. Une référence pour la popup elle-même (qui sera dans le body)
@@ -139,7 +141,7 @@ export function WorkoutPopover({ workouts, onClose, enableDrag = false }: Workou
                                 <WorkoutBadge
                                     workout={workout}
                                     enableDrag={enableDrag}
-                                    href={`/seance/${workout.id}?retour=agenda`}
+                                    href={seanceHref(workout.id)}
                                     isCompact={false}
                                 />
                             </div>

@@ -38,6 +38,8 @@ interface CalendarViewProps {
     onCalendarDateChange: (date: Date) => void;
     calendarMobileDay: Date;
     onCalendarMobileDayChange: (date: Date) => void;
+    /** Retour au mois courant : efface l'état d'URL au lieu d'y écrire aujourd'hui. */
+    onCalendarReset: () => void;
 }
 
 export function CalendarView({
@@ -58,6 +60,7 @@ export function CalendarView({
     onCalendarDateChange: setSelectedDate,
     calendarMobileDay,
     onCalendarMobileDayChange: setSelectedMobileDay,
+    onCalendarReset,
 }: CalendarViewProps) {
     const selectedDate = calendarDate ?? new Date();
     const selectedMobileDay = calendarMobileDay ?? new Date();
@@ -165,9 +168,9 @@ export function CalendarView({
     };
     const handleActualMonth = () => {
         const today = new Date();
-        setSelectedDate(new Date(today.getFullYear(), today.getMonth()));
+        // Le libellé mobile est un état local : l'effacement d'URL ne le touche pas.
         setMobileDisplayMonth({ year: today.getFullYear(), month: today.getMonth() });
-        setSelectedMobileDay(today);
+        onCalendarReset();
     };
     const handleNextMonth = () => {
         const d = new Date(mobileDisplayMonth.year, mobileDisplayMonth.month + 1);

@@ -18,6 +18,12 @@ export type View = 'dashboard' | 'plan' | 'settings' | 'stats' | 'onboarding' | 
 
 interface NavProps {
     onViewChange: (view: View) => void;
+    /**
+     * Clic sur le logo. Sans lui, il se comporte comme l'onglet Agenda ; les
+     * pages qui portent un état dans l'URL s'en servent pour tout remettre à
+     * zéro (retour au domaine nu) plutôt que de conserver le mois consulté.
+     */
+    onLogoClick?: () => void;
     currentView: string;
     appName?: string;
     /**
@@ -31,6 +37,7 @@ interface NavProps {
 
 export const Nav: React.FC<NavProps> = ({
     onViewChange,
+    onLogoClick,
     currentView,
     appName = "PulsePeak",
     variant = 'app',
@@ -49,7 +56,7 @@ export const Nav: React.FC<NavProps> = ({
 
                     {/* ── Left: logo (toujours visible) ── */}
                     <button
-                        onClick={() => onViewChange('dashboard')}
+                        onClick={() => (onLogoClick ? onLogoClick() : onViewChange('dashboard'))}
                         className="flex items-center gap-2.5"
                     >
                         <div className="relative w-7 h-7">

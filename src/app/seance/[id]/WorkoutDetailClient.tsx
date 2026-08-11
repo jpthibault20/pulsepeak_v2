@@ -45,6 +45,8 @@ export interface WorkoutDetailClientProps {
     sameDayWorkouts: Workout[];
     backHref: string;
     backLabel: string;
+    /** Query (`?from=…&month=…&day=…`) portée par les liens vers une autre séance */
+    seanceQuery: string;
     breadcrumb: string;
 }
 
@@ -59,6 +61,7 @@ export default function WorkoutDetailClient({
     sameDayWorkouts,
     backHref,
     backLabel,
+    seanceQuery,
     breadcrumb,
 }: WorkoutDetailClientProps) {
     const router = useRouter();
@@ -204,13 +207,14 @@ export default function WorkoutDetailClient({
         return (
             <>
                 <WorkoutSubHeader
-                    backLabel={backLabel} backHref={backHref} breadcrumb={breadcrumb}
+                    backLabel={backLabel} backHref={backHref} seanceQuery={seanceQuery} breadcrumb={breadcrumb}
                     prev={prev} next={next} dayPosition={dayPosition}
                 />
                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none">
                     <RestDayView
                         workout={workout}
                         profile={profile}
+                        seanceQuery={seanceQuery}
                         nextWorkout={next ? {
                             ...next,
                             durationMinutes: workoutsOnDate.find(w => w.id === next.id)?.plannedData?.durationMinutes ?? null,
@@ -329,7 +333,7 @@ export default function WorkoutDetailClient({
     return (
         <>
             <WorkoutSubHeader
-                backLabel={backLabel} backHref={backHref} breadcrumb={breadcrumb}
+                backLabel={backLabel} backHref={backHref} seanceQuery={seanceQuery} breadcrumb={breadcrumb}
                 prev={prev} next={next} dayPosition={dayPosition}
             />
 

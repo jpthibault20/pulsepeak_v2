@@ -13,6 +13,15 @@ import {
 } from '@/lib/data/crud';
 import { getWorkoutDeviation } from '@/app/actions/schedule/workout-ai';
 import { formatDate } from '@/lib/utils';
+import {
+    buildAppHref,
+    buildSeanceQuery,
+    isDayParam,
+    isMonthParam,
+    toSeanceOrigin,
+    type CalendarUrlState,
+    type SeanceOrigin,
+} from '@/lib/calendar-url';
 
 import SeanceShell from './SeanceShell';
 import WorkoutDetailClient from './WorkoutDetailClient';
@@ -23,7 +32,7 @@ const loadWorkout = cache(async (id: string) => getWorkoutById(id));
 
 type PageProps = {
     params: Promise<{ id: string }>;
-    searchParams: Promise<{ retour?: string }>;
+    searchParams: Promise<{ from?: string; month?: string; day?: string }>;
 };
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -39,15 +48,15 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 }
 
 /** Provenance : d'où l'utilisateur vient, pour un retour correct même en deep-link. */
-const BACK_TARGETS: Record<string, { href: string; label: string }> = {
-    agenda: { href: '/', label: 'Agenda' },
-    plan:   { href: '/?vue=plan', label: 'Plan' },
-    stats:  { href: '/?vue=stats', label: 'Stats' },
+const BACK_TARGETS: Record<SeanceOrigin, { view: string | null; label: string }> = {
+    calendar: { view: null,    label: 'Agenda' },
+    plan:     { view: 'plan',  label: 'Plan' },
+    stats:    { view: 'stats', label: 'Stats' },
 };
 
 export default async function SeancePage({ params, searchParams }: PageProps) {
     const { id } = await params;
-    const { retour } = await searchParams;
+    const { from, month, day } = await searchParams;
 
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -87,7 +96,18 @@ export default async function SeancePage({ params, searchParams }: PageProps) {
         }
     }
 
-    const back = BACK_TARGETS[retour ?? ''] ?? BACK_TARGETS.agenda;
+    // L'état du calendrier arrive par l'URL et doit repartir avec le retour :
+    // sans lui, revenir d'une séance de juillet rouvrait l'agenda au mois courant.
+    const calendar: CalendarUrlState = {
+        month: isMonthParam(month) ? month : null,
+        day: isDayParam(day) ? day : null,
+    };
+    const origin = toSeanceOrigin(from);
+    const back = BACK_TARGETS[origin];
+    const backHref = buildAppHref(back.view, calendar);
+    // Query à recoller sur les liens frères (séance préc./suiv.) : la provenance
+    // et le mois consulté doivent survivre à la navigation entre séances.
+    const seanceQuery = buildSeanceQuery(origin, calendar);
 
     const breadcrumbParts = [
         context?.blockTheme || context?.blockType,
@@ -96,7 +116,7 @@ export default async function SeancePage({ params, searchParams }: PageProps) {
     ].filter(Boolean);
 
     return (
-        <SeanceShell profile={profile}>
+        <SeanceShell profile={profile} calendar={calendar}>
             <WorkoutDetailClient
                 workout={workout}
                 profile={profile}
@@ -106,8 +126,9 @@ export default async function SeancePage({ params, searchParams }: PageProps) {
                 next={neighbours.next}
                 workoutsOnDate={workoutsOnDate}
                 sameDayWorkouts={sameDayWorkouts}
-                backHref={back.href}
+                backHref={backHref}
                 backLabel={back.label}
+                seanceQuery={seanceQuery}
                 breadcrumb={breadcrumbParts.join(' · ')}
             />
         </SeanceShell>

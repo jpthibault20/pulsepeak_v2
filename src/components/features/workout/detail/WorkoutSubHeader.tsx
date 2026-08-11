@@ -7,9 +7,11 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { WorkoutNeighbour } from '@/lib/data/crud';
 
 interface Props {
-    /** Libellé et cible du retour, résolus depuis ?retour= */
+    /** Libellé et cible du retour, résolus depuis ?from= */
     backLabel: string;
     backHref: string;
+    /** Query (`?from=…&month=…&day=…`) à recoller sur les liens séance voisine */
+    seanceQuery: string;
     /** Fil d'Ariane contextuel : « Bloc Seuil · Semaine 7 · Mar. 12 août » */
     breadcrumb: string;
     prev: WorkoutNeighbour | null;
@@ -26,7 +28,7 @@ interface Props {
  * se cale ensuite à `top-[6.5rem]` = 3.5rem (nav) + 3rem (cette barre).
  */
 export const WorkoutSubHeader: React.FC<Props> = ({
-    backLabel, backHref, breadcrumb, prev, next, dayPosition,
+    backLabel, backHref, seanceQuery, breadcrumb, prev, next, dayPosition,
 }) => {
     const router = useRouter();
 
@@ -41,13 +43,13 @@ export const WorkoutSubHeader: React.FC<Props> = ({
                 (el instanceof HTMLElement && el.isContentEditable);
             if (isTyping || e.metaKey || e.ctrlKey || e.altKey) return;
 
-            if (e.key === 'ArrowLeft' && prev) router.push(`/seance/${prev.id}`);
-            else if (e.key === 'ArrowRight' && next) router.push(`/seance/${next.id}`);
+            if (e.key === 'ArrowLeft' && prev) router.push(`/seance/${prev.id}${seanceQuery}`);
+            else if (e.key === 'ArrowRight' && next) router.push(`/seance/${next.id}${seanceQuery}`);
             else if (e.key === 'Escape') router.push(backHref);
         };
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
-    }, [prev, next, backHref, router]);
+    }, [prev, next, backHref, seanceQuery, router]);
 
     return (
         <nav
@@ -78,13 +80,13 @@ export const WorkoutSubHeader: React.FC<Props> = ({
 
                 {/* Précédente / suivante */}
                 <div className="flex items-center gap-1 shrink-0">
-                    <NeighbourButton dir="prev" target={prev} />
+                    <NeighbourButton dir="prev" target={prev} query={seanceQuery} />
                     {dayPosition && dayPosition.total > 1 && (
                         <span className="px-1 text-[11px] font-medium tabular-nums text-slate-500 dark:text-slate-400">
                             {dayPosition.index}/{dayPosition.total}
                         </span>
                     )}
-                    <NeighbourButton dir="next" target={next} />
+                    <NeighbourButton dir="next" target={next} query={seanceQuery} />
                 </div>
             </div>
         </nav>
@@ -95,7 +97,7 @@ export const WorkoutSubHeader: React.FC<Props> = ({
  * Un <a> désactivé n'existe pas en HTML : en butée on rend un <span> inerte
  * porteur d'aria-disabled plutôt qu'un lien qui ne mène nulle part.
  */
-const NeighbourButton: React.FC<{ dir: 'prev' | 'next'; target: WorkoutNeighbour | null }> = ({ dir, target }) => {
+const NeighbourButton: React.FC<{ dir: 'prev' | 'next'; target: WorkoutNeighbour | null; query: string }> = ({ dir, target, query }) => {
     const isPrev = dir === 'prev';
     const Icon = isPrev ? ChevronLeft : ChevronRight;
     const label = isPrev ? 'Séance précédente' : 'Séance suivante';
@@ -121,7 +123,7 @@ const NeighbourButton: React.FC<{ dir: 'prev' | 'next'; target: WorkoutNeighbour
 
     return (
         <Link
-            href={`/seance/${target.id}`}
+            href={`/seance/${target.id}${query}`}
             aria-label={`${label} : ${target.title}`}
             title={target.title}
             className={`${base} text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800`}

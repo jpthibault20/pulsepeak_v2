@@ -17,6 +17,7 @@ import type { Objective, Profile } from '@/lib/data/DatabaseTypes';
 import type { AvailabilitySlot } from '@/lib/data/type';
 import { FeatureGate } from '@/components/features/billing/FeatureGate';
 import { parseLocalDate } from '@/lib/utils';
+import { useSeanceHref } from '@/hooks/useSeanceHref';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -433,6 +434,7 @@ interface WeekRowProps {
 }
 
 function WeekRow({ week, blockType, onRegenerate }: WeekRowProps) {
+    const seanceHref = useSeanceHref('plan');
     const effectiveType = (week.type === 'Load' && blockType === 'Taper') ? 'Taper' : week.type;
     const badge = WEEK_TYPE_BADGE[effectiveType] ?? WEEK_TYPE_BADGE.Load;
     const todayStr = new Date().toISOString().slice(0, 10);
@@ -485,7 +487,7 @@ function WeekRow({ week, blockType, onRegenerate }: WeekRowProps) {
                         return (
                             <Link
                                 key={w.id}
-                                href={`/seance/${w.id}?retour=plan`}
+                                href={seanceHref(w.id)}
                                 className={`
                                     flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium transition-colors
                                     ${w.status === 'completed'

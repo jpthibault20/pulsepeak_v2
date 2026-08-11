@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Plus, BedDouble, Layers, Trophy, Target, X } from 'lucide-react';
 import type { Workout, Objective } from '@/lib/data/DatabaseTypes';
 import { formatDateKey } from '@/lib/utils';
+import { useSeanceHref } from '@/hooks/useSeanceHref';
 import { WorkoutBadge, WORKOUT_DND_MIME } from './WorkoutBadge';
 import { WorkoutPopover } from './WorkoutPopover';
 
@@ -28,6 +29,7 @@ export function DayCell({
 }: DayCellProps) {
     const [showPopover, setShowPopover] = useState(false);
     const [isDragOver, setIsDragOver] = useState(false);
+    const seanceHref = useSeanceHref('calendar');
 
     const dateKey = formatDateKey(date);
 
@@ -146,7 +148,7 @@ export function DayCell({
                     <div className="animate-in fade-in zoom-in-95 duration-200">
                         <WorkoutBadge
                             workout={workouts[0]}
-                            href={`/seance/${workouts[0].id}?retour=agenda`}
+                            href={seanceHref(workouts[0].id)}
                             isCompact={false}
                             enableDrag
                         />

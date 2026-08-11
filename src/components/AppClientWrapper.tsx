@@ -36,6 +36,7 @@ import { TutorialOverlay } from '@/components/features/tutorial/TutorialOverlay'
 import { WelcomeScreen } from '@/components/features/tutorial/WelcomeScreen';
 import { Card } from '@/components/ui';
 import { parseLocalDate, formatDateKey } from '@/lib/utils';
+import { formatMonthKey, isDayParam, isMonthParam } from '@/lib/calendar-url';
 import { Profile, Schedule } from '@/lib/data/DatabaseTypes';
 import { useTheme } from '@/components/ThemeProvider';
 
@@ -65,16 +66,16 @@ export default function AppClientWrapper({ initialProfile, initialSchedule, init
     }, [initialProfile.theme, setThemeFromProfile]);
 
     // --- État porté par l'URL ---
-    // `/?vue=plan&mois=2026-10&jour=2026-10-14`. Ces trois paramètres survivent
+    // `/?view=plan&month=2026-10&day=2026-10-14`. Ces trois paramètres survivent
     // à l'aller-retour vers /seance/[id], qui démonte ce composant.
     const router = useRouter();
     const searchParams = useSearchParams();
-    const vueParam = searchParams.get('vue');
-    const moisParam = searchParams.get('mois');
-    const jourParam = searchParams.get('jour');
+    const viewParam = searchParams.get('view');
+    const monthParam = searchParams.get('month');
+    const dayParam = searchParams.get('day');
 
     // Les patches se composent via une ref, PAS via `searchParams` : deux appels
-    // dans le même tick (changer de mois met à jour `mois` ET `jour`) partiraient
+    // dans le même tick (changer de mois met à jour `month` ET `day`) partiraient
     // sinon du même snapshot périmé, et le second `replace` écraserait le premier
     // — le mois revenait alors à sa valeur d'origine.
     const paramsRef = useRef(searchParams.toString());
@@ -86,15 +87,17 @@ export default function AppClientWrapper({ initialProfile, initialSchedule, init
             if (v === null) next.delete(k);
             else next.set(k, v);
         }
-        paramsRef.current = next.toString();
+        const qs = next.toString();
+        paramsRef.current = qs;
         // replace + scroll:false : changer de mois ne doit ni empiler une entrée
         // d'historique ni renvoyer l'utilisateur en haut de page.
-        router.replace(`/?${next.toString()}`, { scroll: false });
+        // Query vide → `/` nu, pas `/?` : l'état par défaut mérite une URL propre.
+        router.replace(qs ? `/?${qs}` : '/', { scroll: false });
     }, [router]);
 
     // --- State Management ---
     const startView: View = initialProfile.firstName
-        ? (VALID_VIEWS.includes(vueParam as View) ? (vueParam as View) : 'dashboard')
+        ? (VALID_VIEWS.includes(viewParam as View) ? (viewParam as View) : 'dashboard')
         : 'welcome';
     const [view, setView] = useState<View>(startView);
 
@@ -102,9 +105,9 @@ export default function AppClientWrapper({ initialProfile, initialSchedule, init
     // on resynchronise l'onglet affiché sur le paramètre d'URL.
     useEffect(() => {
         if (!initialProfile.firstName) return;
-        const target: View = VALID_VIEWS.includes(vueParam as View) ? (vueParam as View) : 'dashboard';
+        const target: View = VALID_VIEWS.includes(viewParam as View) ? (viewParam as View) : 'dashboard';
         setView(current => (current === 'onboarding' || current === 'welcome' ? current : target));
-    }, [vueParam, initialProfile.firstName]);
+    }, [viewParam, initialProfile.firstName]);
 
     const [profile, setProfile] = useState<Profile>(initialProfile);
     const [schedule, setSchedule] = useState<Schedule | null>(initialSchedule);
@@ -117,21 +120,26 @@ export default function AppClientWrapper({ initialProfile, initialSchedule, init
     // séance quitte `/` et démonte ce composant. Sans ça, l'utilisateur qui
     // navigue en octobre, ouvre une séance puis revient se retrouve au mois
     // courant. Bénéfice collatéral : le calendrier devient partageable.
+    // Les paramètres sont éditables à la main : on ignore tout ce qui n'est pas
+    // une date valide plutôt que de propager un `Invalid Date` au calendrier.
     const calendarDate = useMemo(
-        () => (moisParam ? parseLocalDate(`${moisParam}-01`) : new Date()),
-        [moisParam],
+        () => (isMonthParam(monthParam) ? parseLocalDate(`${monthParam}-01`) : new Date()),
+        [monthParam],
     );
     const calendarMobileDay = useMemo(
-        () => (jourParam ? parseLocalDate(jourParam) : new Date()),
-        [jourParam],
+        () => (isDayParam(dayParam) ? parseLocalDate(dayParam) : new Date()),
+        [dayParam],
     );
 
     const setCalendarDate = useCallback((d: Date) => {
-        updateUrlState({ mois: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` });
+        updateUrlState({ month: formatMonthKey(d) });
     }, [updateUrlState]);
 
+    // `month` suit le jour sélectionné : sur mobile la navigation se fait au scroll
+    // de la bande de jours, sans jamais passer par les flèches de mois — sans ça,
+    // revenir d'une séance de juillet rouvrait la bande sur le mois courant.
     const setCalendarMobileDay = useCallback((d: Date) => {
-        updateUrlState({ jour: formatDateKey(d) });
+        updateUrlState({ day: formatDateKey(d), month: formatMonthKey(d) });
     }, [updateUrlState]);
 
     // Chat — persist messages while app is open
@@ -222,9 +230,24 @@ export default function AppClientWrapper({ initialProfile, initialSchedule, init
     // --- Navigation Handler ---
     const handleViewChange = useCallback((next: View) => {
         setView(next);
-        updateUrlState({ vue: next === 'dashboard' ? null : next });
+        updateUrlState({ view: next === 'dashboard' ? null : next });
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }, [updateUrlState]);
+
+    // Retour à l'état par défaut (logo, bouton « mois courant ») : on efface les
+    // paramètres au lieu d'y écrire aujourd'hui. Tout étant dérivé de l'URL,
+    // l'agenda retombe sur le mois courant — et l'URL redevient le domaine nu.
+    const handleResetHome = useCallback(() => {
+        setView('dashboard');
+        updateUrlState({ view: null, month: null, day: null });
+    }, [updateUrlState]);
+
+    // Le logo est un élément de navigation : lui seul remonte la page. Le bouton
+    // « maison » du calendrier ne fait que recadrer le mois, sans déplacer le scroll.
+    const handleLogoClick = useCallback(() => {
+        handleResetHome();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, [handleResetHome]);
 
     // --- Onboarding → Tutorial transition ---
     // Track that we came from onboarding (first-time user flow)
@@ -461,6 +484,7 @@ export default function AppClientWrapper({ initialProfile, initialSchedule, init
                 {showNav && (
                     <Nav
                         onViewChange={handleViewChange}
+                        onLogoClick={handleLogoClick}
                         currentView={view}
                         appName="PulsePeak"
                     />
@@ -562,6 +586,7 @@ export default function AppClientWrapper({ initialProfile, initialSchedule, init
                                 onCalendarDateChange={setCalendarDate}
                                 calendarMobileDay={calendarMobileDay}
                                 onCalendarMobileDayChange={setCalendarMobileDay}
+                                onCalendarReset={handleResetHome}
                             />
                         </div>
                     )}
