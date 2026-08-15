@@ -1,0 +1,77 @@
+Copyright (c) 2026 JEANPIERRE Thibault. Tous droits réservés. / All rights reserved.
+
+═══════════════════════════════════════════════════════════════════════════════
+FRANÇAIS
+═══════════════════════════════════════════════════════════════════════════════
+
+TOUS DROITS RÉSERVÉS — LOGICIEL PROPRIÉTAIRE
+
+Le code source de PulsePeak (« le Logiciel ») est rendu publiquement
+consultable à des fins de démonstration et de transparence uniquement.
+
+Aucune licence, expresse ou implicite, n'est accordée. En particulier, il est
+interdit, sans autorisation écrite préalable du titulaire des droits, de :
+
+  - copier, reproduire ou télécharger le Logiciel autrement que pour une
+    consultation en ligne ;
+  - modifier, adapter, traduire ou créer des œuvres dérivées du Logiciel ;
+  - distribuer, publier, sous-licencier, vendre ou louer le Logiciel ;
+  - utiliser le Logiciel, en tout ou partie, à des fins personnelles,
+    commerciales ou de recherche ;
+  - utiliser le Logiciel comme données d'entraînement pour un modèle
+    d'apprentissage automatique.
+
+Le fait que ce dépôt soit public ne constitue en aucun cas une renonciation
+aux droits d'auteur ni une mise dans le domaine public.
+
+Les dépendances tierces utilisées par le Logiciel restent soumises à leurs
+licences respectives.
+
+ABSENCE DE GARANTIE
+
+LE LOGICIEL EST FOURNI « EN L'ÉTAT », SANS GARANTIE D'AUCUNE SORTE, EXPRESSE
+OU IMPLICITE, Y COMPRIS SANS S'Y LIMITER LES GARANTIES DE QUALITÉ MARCHANDE,
+D'ADÉQUATION À UN USAGE PARTICULIER ET D'ABSENCE DE CONTREFAÇON. EN AUCUN CAS
+LE TITULAIRE DES DROITS NE POURRA ÊTRE TENU RESPONSABLE D'UNE QUELCONQUE
+RÉCLAMATION, DE DOMMAGES OU DE TOUTE AUTRE RESPONSABILITÉ, QUE CE SOIT DANS LE
+CADRE D'UNE ACTION CONTRACTUELLE, DÉLICTUELLE OU AUTRE, DÉCOULANT DU LOGICIEL,
+DE SON UTILISATION OU DE TOUTE AUTRE OPÉRATION LE CONCERNANT.
+
+═══════════════════════════════════════════════════════════════════════════════
+ENGLISH
+═══════════════════════════════════════════════════════════════════════════════
+
+ALL RIGHTS RESERVED — PROPRIETARY SOFTWARE
+
+The source code of PulsePeak (the "Software") is made publicly viewable for
+demonstration and transparency purposes only.
+
+No license, express or implied, is granted. In particular, you may NOT, without
+the prior written permission of the copyright holder:
+
+  - copy, reproduce, or download the Software other than for online viewing;
+  - modify, adapt, translate, or create derivative works of the Software;
+  - distribute, publish, sublicense, sell, or rent the Software;
+  - use the Software, in whole or in part, for personal, commercial, or
+    research purposes;
+  - use the Software as training data for any machine learning model.
+
+Publishing this repository publicly does not constitute a waiver of copyright
+nor a dedication to the public domain.
+
+Third-party dependencies used by the Software remain subject to their own
+respective licenses.
+
+NO WARRANTY
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+═══════════════════════════════════════════════════════════════════════════════
+
+Pour toute demande d'autorisation : https://github.com/jpthibault20
+For permission requests: https://github.com/jpthibault20

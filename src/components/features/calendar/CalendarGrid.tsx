@@ -17,7 +17,7 @@ export function CalendarGrid({
     currentMonth,
     onOpenManualModal,
 }: CalendarGridProps) {
-    const { scheduleData, profile, objectives, onViewWorkout, onEditObjective, onRefresh, onOpenGenModal, onMoveWorkout } = useCalendarContext();
+    const { scheduleData, profile, objectives, onEditObjective, onRefresh, onOpenGenModal, onMoveWorkout } = useCalendarContext();
 
     const allWeekStats = useMemo(() => {
         return weekRows.map(week => {
@@ -153,7 +153,6 @@ export function CalendarGrid({
                                             isCurrentMonth={isCurrentMonth}
                                             isToday={isToday}
                                             onOpenManualModal={onOpenManualModal}
-                                            onViewWorkout={onViewWorkout}
                                             onEditObjective={onEditObjective}
                                             onMoveWorkout={onMoveWorkout}
                                         />

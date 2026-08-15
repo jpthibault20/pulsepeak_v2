@@ -7,7 +7,7 @@
  *          disponibles, dans cet ordre de fiabilité décroissante :
  *            1. Distribution en zones (puissance vélo, calculée à l'import).
  *            2. Détection d'intervalles (VI puissance, variabilité des laps).
- *            3. Intensity Factor (IF) global.
+ *            3. Intensity Factor (IF) global, lu sur l'échelle de sa source.
  *            4. FC moyenne rapportée aux zones FC de l'athlète.
  *
  *          Le résultat alimente `completedData.detectedType` (persisté à
@@ -16,6 +16,7 @@
  ******************************************************************************/
 import type { CompletedData, SportType, Zones } from '@/lib/data/type';
 import type { Profile } from '@/lib/data/DatabaseTypes';
+import { readIntensityLevel } from './intensityScale';
 
 export type SessionType =
   | 'Récupération'
@@ -133,14 +134,13 @@ export function classifySessionType(
   // 2. Intervalles détectés sans distribution → on tranche directement.
   if (intervals) return 'Intervalles';
 
-  // 3. Intensity Factor global.
+  // 3. Intensity Factor global, lu sur l'échelle de la métrique qui l'a produit
+  //    (voir intensityScale.ts). Sans `tssSource` — séances antérieures à sa
+  //    persistance — l'IF n'est pas interprétable : on passe à la FC.
   const ifv = cd.intensityFactor ?? null;
   if (ifv != null && ifv > 0) {
-    if (ifv < 0.55) return 'Récupération';
-    if (ifv < 0.75) return 'Endurance';
-    if (ifv < 0.85) return 'Tempo';
-    if (ifv < 0.95) return 'Seuil';
-    return 'VO2max';
+    const level = readIntensityLevel(ifv, cd.tssSource ?? 'default', profile);
+    if (level) return level;
   }
 
   // 4. FC moyenne vs zones FC.

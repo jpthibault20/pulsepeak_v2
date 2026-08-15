@@ -1,13 +1,12 @@
 'use client';
 
 import { createContext, useContext } from 'react';
-import type { Schedule, Profile, Objective, Workout } from '@/lib/data/DatabaseTypes';
+import type { Schedule, Profile, Objective } from '@/lib/data/DatabaseTypes';
 
 interface CalendarContextValue {
     scheduleData: Schedule;
     profile: Profile;
     objectives: Objective[];
-    onViewWorkout: (workout: Workout) => void;
     onEditObjective: (obj: Objective) => void;
     onRefresh: () => void;
     onOpenGenModal: () => void;

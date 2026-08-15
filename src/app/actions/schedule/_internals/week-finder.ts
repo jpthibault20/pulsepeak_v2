@@ -14,14 +14,23 @@ import { Block, Week } from '@/lib/data/DatabaseTypes';
 
 /**
  * Trouve le bloc et la semaine qui contiennent `targetDate`.
- * @returns { block, week } ou null si la date est hors de tout bloc actif
+ *
+ * ⚠️ `blocks` contient TOUS les blocs de l'utilisateur, y compris ceux des
+ * plans archivés (prepareArchive conserve les N derniers plans en base). Ces
+ * blocs chevauchent les dates du plan actif : sans le filtre `activePlanId`,
+ * `find` peut retourner un bloc archivé (l'ordre des lignes n'est pas garanti)
+ * et la génération se ferait alors sur l'ancien bloc / l'ancienne semaine.
+ *
+ * @param activePlanId Identifiant du plan actif — seuls ses blocs sont candidats.
+ * @returns { block, week } ou null si la date est hors de tout bloc du plan actif
  */
 export function findBlockAndWeekForDate(
     blocks: Block[],
     weeks: Week[],
-    targetDate: Date
+    targetDate: Date,
+    activePlanId: string,
 ): { block: Block; week: Week } | null {
-    const block = blocks.find(b => {
+    const block = blocks.filter(b => b.planId === activePlanId).find(b => {
         const start = parseLocalDate(b.startDate);
         const end = addDays(start, b.weekCount * 7);
         return targetDate >= start && targetDate < end;

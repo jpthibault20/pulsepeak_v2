@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Trophy, Calendar, MapPin, Mountain, FileText } from 'lucide-react';
+import { Trophy, Calendar, MapPin, Mountain, FileText, Trash2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modale';
 import type { Objective } from '@/lib/data/DatabaseTypes';
@@ -11,6 +11,8 @@ interface ObjectiveModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSave: (obj: Objective) => Promise<void>;
+    /** Optionnel : active le bouton "Supprimer" en mode édition. */
+    onDelete?: (id: string) => Promise<void>;
     initialDate?: string;
     initial?: Objective | null;
     isSaving?: boolean;
@@ -24,7 +26,7 @@ const SPORT_OPTIONS: { value: ObjectiveSport; label: string }[] = [
     { value: 'duathlon',  label: 'Duathlon' },
 ];
 
-export function ObjectiveModal({ isOpen, onClose, onSave, initialDate, initial, isSaving = false }: ObjectiveModalProps) {
+export function ObjectiveModal({ isOpen, onClose, onSave, onDelete, initialDate, initial, isSaving = false }: ObjectiveModalProps) {
     const [name, setName] = useState(initial?.name ?? '');
     const [date, setDate] = useState(initial?.date ?? initialDate ?? '');
     const [sport, setSport] = useState<ObjectiveSport>(initial?.sport ?? 'triathlon');
@@ -32,6 +34,8 @@ export function ObjectiveModal({ isOpen, onClose, onSave, initialDate, initial, 
     const [elevationGainM, setElevationGainM] = useState(initial?.elevationGainM?.toString() ?? '');
     const [priority, setPriority] = useState<Objective['priority']>(initial?.priority ?? 'secondaire');
     const [comment, setComment] = useState(initial?.comment ?? '');
+    const [confirmDelete, setConfirmDelete] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     // Synchronise le formulaire à l'ouverture (ou quand on passe d'un objectif à un autre
     // sans fermer la modale). Pattern React "adjusting state during rendering" — évite
@@ -41,6 +45,7 @@ export function ObjectiveModal({ isOpen, onClose, onSave, initialDate, initial, 
     const [lastSyncKey, setLastSyncKey] = useState(syncKey);
     if (lastSyncKey !== syncKey) {
         setLastSyncKey(syncKey);
+        setConfirmDelete(false);
         if (isOpen) {
             if (initial) {
                 setName(initial.name);
@@ -84,6 +89,21 @@ export function ObjectiveModal({ isOpen, onClose, onSave, initialDate, initial, 
         await onSave(obj);
         onClose();
     };
+
+    const handleDelete = async () => {
+        if (!onDelete || !initial) return;
+        setIsDeleting(true);
+        try {
+            await onDelete(initial.id);
+            onClose();
+        } finally {
+            setIsDeleting(false);
+            setConfirmDelete(false);
+        }
+    };
+
+    const canDelete = !!onDelete && !!initial;
+    const isBusy = isSaving || isDeleting;
 
     return (
         <Modal
@@ -210,9 +230,43 @@ export function ObjectiveModal({ isOpen, onClose, onSave, initialDate, initial, 
                     />
                 </div>
 
+                {/* Confirmation de suppression */}
+                {canDelete && confirmDelete && (
+                    <div className="flex items-start gap-2.5 p-3 rounded-lg bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30">
+                        <AlertTriangle size={15} className="text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-red-700 dark:text-red-300">Supprimer cet objectif ?</p>
+                            <p className="text-xs text-red-600/80 dark:text-red-400/80 mt-0.5">
+                                Cette action est définitive. Le plan déjà généré n&apos;est pas supprimé.
+                            </p>
+                            <div className="flex gap-2 mt-2.5">
+                                <Button variant="danger" size="sm" onClick={handleDelete} isLoading={isDeleting} disabled={isBusy}>
+                                    Supprimer
+                                </Button>
+                                <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)} disabled={isBusy}>
+                                    Annuler
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* Footer */}
                 <div className="flex gap-3 pt-2 border-t border-slate-200 dark:border-slate-800">
-                    <Button variant="outline" className="flex-1 h-11" onClick={onClose} disabled={isSaving}>
+                    {canDelete && !confirmDelete && (
+                        <Button
+                            variant="danger"
+                            size="icon"
+                            className="h-11 w-11 shrink-0"
+                            aria-label="Supprimer l'objectif"
+                            title="Supprimer l'objectif"
+                            onClick={() => setConfirmDelete(true)}
+                            disabled={isBusy}
+                        >
+                            <Trash2 size={16} />
+                        </Button>
+                    )}
+                    <Button variant="outline" className="flex-1 h-11" onClick={onClose} disabled={isBusy}>
                         Annuler
                     </Button>
                     <Button
@@ -220,7 +274,7 @@ export function ObjectiveModal({ isOpen, onClose, onSave, initialDate, initial, 
                         className="flex-1 h-11 font-semibold"
                         icon={Trophy}
                         onClick={handleSave}
-                        disabled={!canSave || isSaving}
+                        disabled={!canSave || isBusy}
                     >
                         {isSaving ? (
                             <span className="flex items-center gap-2">

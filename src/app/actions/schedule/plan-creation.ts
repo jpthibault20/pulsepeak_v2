@@ -32,6 +32,7 @@ import { ReturnCode } from '@/lib/data/type';
 import type { AvailabilitySlot } from '@/lib/data/type';
 import { Block, Objective, Plan, Profile, Week, Workout } from '@/lib/data/DatabaseTypes';
 import { callGeminiAPI } from '@/lib/ai/coach-api';
+import { buildCoachRoleIntro } from '@/lib/ai/coach-persona';
 
 import {
     CTL_LEVEL_MULTIPLIER,
@@ -40,7 +41,7 @@ import {
     RECOVERY_WEEK_THRESHOLD,
     TAPER_CTL_DROP_PERCENT,
 } from '../constants';
-import { buildTaperPlan, computeBlockSkeletons, computeWeeklyTSS } from '../helpers';
+import { buildTaperPlan, computeBlockSkeletons, computeWeeklyTSS, formatActiveSportsFr } from '../helpers';
 import { checkAndIncrementAICallLimit } from './_internals/rate-limit';
 import { analyzeAthleteContext, computeAvgCompletion, getCompletedBlocksHistory, getTrainingHistorySummary } from './_internals/ai-context';
 import { CreateWorkoutForWeek } from './_internals/workout-generator';
@@ -121,7 +122,7 @@ export async function CreateAdvancedPlan(
     const [existingAllWorkouts, existingAllWeeks, existingObjectives] = await Promise.all([
         getWorkout(), getWeek(), getObjectives(),
     ]);
-    const realCompletion = computeAvgCompletion(existingAllWorkouts ?? [], existingAllWeeks ?? [], firstWeek.id);
+    const realCompletion = computeAvgCompletion(existingAllWorkouts ?? [], existingAllWeeks ?? [], updatedBlocks, firstWeek.id);
     const firstWeekStart = parseLocalDate(firstBlock.startDate);
     const firstWeekEnd = addDays(firstWeekStart, 13); // cette semaine + semaine suivante
     const todayStr = format(new Date(), 'yyyy-MM-dd');
@@ -253,7 +254,7 @@ export async function CreatePlanToObjective(userID: string, planStartDate: strin
         return objDate >= firstWeekStart && objDate <= firstWeekEnd;
     });
 
-    const realCompletion2 = computeAvgCompletion(existingWorkouts ?? [], existingWeeks ?? [], firstWeek.id);
+    const realCompletion2 = computeAvgCompletion(existingWorkouts ?? [], existingWeeks ?? [], updatedBlocks, firstWeek.id);
     const firstWeekWorkouts = await CreateWorkoutForWeek(profile, newPlan, firstBlock, firstWeek, null, realCompletion2, weeklyAvailability ?? profile.weeklyAvailability, relevantObjectives);
 
     const newWorkouts: Workout[] = [...firstWeekWorkouts];
@@ -369,14 +370,17 @@ async function CreateBlocks(plan: Plan, profile: Profile): Promise<Block[]> {
 
     const levelMultiplier = CTL_LEVEL_MULTIPLIER[profile.experience ?? 'Intermédiaire'] ?? 1.0;
 
+    const activeSportsLabel = formatActiveSportsFr(profile.activeSports) || 'non définies';
+
     const aiPrompt = `
-Tu es un coach de ${profile.activeSports.cycling ? 'cyclisme' : ''}${profile.activeSports.running ? ', course à pied' : ''}${profile.activeSports.swimming ? ', natation' : ''} certifié avec 15 ans d'expérience en périodisation (Friel, Issurin, Coggan).
+${buildCoachRoleIntro(profile.coachType)}
+Tu es certifié en périodisation (Friel, Issurin, Coggan) et tu construis ici la structure en méso-cycles du plan de cet athlète, dont les disciplines actives sont : ${activeSportsLabel}.
 
 ## CONTEXTE ATHLÈTE
 - Objectif : ${plan.macroStrategyDescription}
 - Date de fin : ${plan.goalDate}
 - Niveau : ${profile.experience ?? "Intermédiaire"}
-- Disciplines : ${profile.activeSports.cycling ? 'cyclisme' : ''}${profile.activeSports.running ? ', course à pied' : ''}${profile.activeSports.swimming ? ', natation' : ''}
+- Disciplines : ${activeSportsLabel}
 
 ${athleteContext}
 
@@ -541,8 +545,11 @@ async function CreateBlocksToObjective(
 
     const levelMultiplier = CTL_LEVEL_MULTIPLIER[profile.experience ?? 'Intermédiaire'] ?? 1.0;
 
+    const activeSportsLabel = formatActiveSportsFr(profile.activeSports) || 'non définies';
+
     const aiPrompt = `
-Tu es un coach de ${profile.activeSports.cycling ? 'cyclisme' : ''}${profile.activeSports.running ? ', course à pied' : ''}${profile.activeSports.swimming ? ', natation' : ''} certifié avec 15 ans d'expérience en périodisation (Friel, Issurin, Coggan).
+${buildCoachRoleIntro(profile.coachType)}
+Tu es certifié en périodisation (Friel, Issurin, Coggan) et tu construis ici la structure en méso-cycles du plan de cet athlète, dont les disciplines actives sont : ${activeSportsLabel}.
 
 ## OBJECTIF PRINCIPAL
 - Course : ${primaryObj.name}
@@ -554,7 +561,7 @@ ${secondaryContext}
 
 ## CONTEXTE ATHLÈTE
 - Niveau : ${profile.experience ?? 'Intermédiaire'}
-- Disciplines : ${profile.activeSports.cycling ? 'cyclisme' : ''}${profile.activeSports.running ? ', course à pied' : ''}${profile.activeSports.swimming ? ', natation' : ''}
+- Disciplines : ${activeSportsLabel}
 
 ${athleteContext}
 

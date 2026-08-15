@@ -40,6 +40,7 @@ function buildContext(profile?: Profile, schedule?: Schedule) {
         experience: profile?.experience ?? 'Inconnu',
         currentCTL: profile?.currentCTL ?? 0,
         activeSports: profile?.activeSports ?? { cycling: false, running: false, swimming: false },
+        coachType: profile?.coachType ?? 'triathlon',
         goal: profile?.goal ?? 'Non défini',
         objectiveDate: profile?.objectiveDate ?? 'Non définie',
         recentWorkouts,

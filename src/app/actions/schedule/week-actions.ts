@@ -49,10 +49,13 @@ export type WeekContext = {
  * Utilisé par le calendrier pour afficher le thème courant au-dessus de la grille.
  */
 export async function getWeekContextForDate(weekStartDate: string): Promise<WeekContext> {
-    const [blocks, weeks] = await Promise.all([getBlock(), getWeek()]);
+    const [blocks, weeks, plans] = await Promise.all([getBlock(), getWeek(), getPlan()]);
     if (!blocks || !weeks) return null;
 
-    const result = findBlockAndWeekForDate(blocks, weeks, parseLocalDate(weekStartDate));
+    const activePlan = (plans ?? []).find(p => p.status === 'active');
+    if (!activePlan) return null;
+
+    const result = findBlockAndWeekForDate(blocks, weeks, parseLocalDate(weekStartDate), activePlan.id);
     if (!result) return null;
 
     return {
@@ -71,10 +74,13 @@ export async function getWeekContextForDate(weekStartDate: string): Promise<Week
  * Utilisé côté client pour demander confirmation avant d'écraser.
  */
 export async function getWeekPendingCount(weekStartDate: string): Promise<number> {
-    const [blocks, weeks, workouts] = await Promise.all([getBlock(), getWeek(), getWorkout()]);
+    const [blocks, weeks, workouts, plans] = await Promise.all([getBlock(), getWeek(), getWorkout(), getPlan()]);
     if (!blocks || !weeks || !workouts) return 0;
 
-    const result = findBlockAndWeekForDate(blocks, weeks, parseLocalDate(weekStartDate));
+    const activePlan = (plans ?? []).find(p => p.status === 'active');
+    if (!activePlan) return 0;
+
+    const result = findBlockAndWeekForDate(blocks, weeks, parseLocalDate(weekStartDate), activePlan.id);
     if (!result) return 0;
 
     return workouts.filter(w => w.weekId === result.week.id && w.status === 'pending').length;
@@ -110,12 +116,15 @@ export async function generateWeekWorkoutsFromDate(
     if (!blocks || !weeks) throw new Error("Aucun plan trouvé.");
 
     const tCtx0 = performance.now();
-    const result = findBlockAndWeekForDate(blocks, weeks, parseLocalDate(weekStartDate));
+    // Scoper la recherche au plan actif : les blocs des plans archivés sont
+    // toujours en base et chevauchent les dates du plan courant.
+    const plan = (plans ?? []).find(p => p.status === 'active');
+    if (!plan) throw new Error("Plan introuvable.");
+
+    const result = findBlockAndWeekForDate(blocks, weeks, parseLocalDate(weekStartDate), plan.id);
     if (!result) throw new Error("Aucun bloc actif pour cette semaine.");
 
     const { block, week } = result;
-    const plan = plans?.find(p => p.id === block.planId);
-    if (!plan) throw new Error("Plan introuvable.");
 
     // Trouver les objectifs pertinents (cette semaine + semaine suivante)
     const objectives = await getObjectives();
@@ -127,7 +136,7 @@ export async function generateWeekWorkoutsFromDate(
         && parseLocalDate(o.date) >= weekStart && parseLocalDate(o.date) <= weekEndPlusOne
     );
 
-    const realCompletion3 = computeAvgCompletion(existingWorkouts ?? [], weeks, week.id);
+    const realCompletion3 = computeAvgCompletion(existingWorkouts ?? [], weeks, blocks, week.id);
     console.log(`[week-gen] 2/4 contexte (findBlock+objectives+completion): ${ms(tCtx0)}ms`);
 
     const tAI0 = performance.now();
@@ -152,8 +161,29 @@ export async function generateWeekWorkoutsFromDate(
     // et on insère les nouvelles en un seul INSERT multi-lignes. Les séances complétées
     // sont préservées. `workoutsId` de la semaine est dérivé au read (non stocké),
     // donc pas besoin de mettre à jour la table `weeks`.
+    //
+    // On purge aussi les séances rattachées à une semaine d'un plan NON actif
+    // et tombant dans la plage régénérée : ce sont des reliquats d'un plan
+    // archivé (ou d'une génération passée sur un bloc archivé), invisibles
+    // dans la vue Plan mais affichées dans le calendrier — sinon elles
+    // apparaîtraient en double à côté des nouvelles séances.
+    const activeWeekIds = new Set(
+        weeks
+            .filter(w => blocks.some(b => b.id === w.blockId && b.planId === plan.id))
+            .map(w => w.id)
+    );
+    const realWeekStart = addDays(parseLocalDate(block.startDate), (week.weekNumber - 1) * 7);
+    const rangeStart = format(realWeekStart, 'yyyy-MM-dd');
+    const rangeEnd   = format(addDays(realWeekStart, 6), 'yyyy-MM-dd');
+
     const removedIds = (existingWorkouts ?? [])
-        .filter(w => w.weekId === week.id && w.status !== 'completed')
+        .filter(w => {
+            if (w.status === 'completed') return false;
+            if (w.weekId === week.id) return true;
+            return !!w.weekId
+                && !activeWeekIds.has(w.weekId)
+                && w.date >= rangeStart && w.date <= rangeEnd;
+        })
         .map(w => w.id);
 
     await Promise.all([
