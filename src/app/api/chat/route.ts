@@ -1,6 +1,7 @@
 export const runtime = 'nodejs';
 
 import { createClient } from '@/lib/supabase/server';
+import { buildChatSystemPrompt, type ChatContext } from '@/lib/ai/chat-prompt';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const STREAM_URL =
@@ -11,66 +12,6 @@ const STREAM_URL =
 interface ChatMessage {
     role: 'user' | 'ai';
     text: string;
-}
-
-interface ActiveSports {
-    cycling:  boolean;
-    running:  boolean;
-    swimming: boolean;
-}
-
-interface ChatContext {
-    firstName:      string;
-    lastName:       string;
-    experience:     string;
-    currentCTL:     number;
-    activeSports:   ActiveSports;
-    goal:           string;
-    objectiveDate:  string;
-    recentWorkouts: {
-        date:      string;
-        sportType: string;
-        title:     string;
-        duration:  number;
-        tss:       number;
-        status:    string;
-    }[];
-}
-
-// ─── System prompt ────────────────────────────────────────────────────────────
-
-function buildSystemPrompt(ctx: ChatContext): string {
-    const sports = (Object.entries(ctx.activeSports) as [string, boolean][])
-        .filter(([, v]) => v)
-        .map(([k]) => ({ cycling: 'Cyclisme', running: 'Course à pied', swimming: 'Natation' }[k] ?? k))
-        .join(', ');
-
-    const workoutsBlock = ctx.recentWorkouts.length > 0
-        ? ctx.recentWorkouts
-            .slice(-10)
-            .map(w => `  • ${w.date} | ${w.sportType} | ${w.title} | ${w.duration}min | TSS ${w.tss} | ${w.status}`)
-            .join('\n')
-        : '  Aucune séance récente.';
-
-    return `Tu es Coach IA PulsePeak, un coach de triathlon expert, bienveillant et concis.
-Tu aides l'athlète à progresser, comprendre son entraînement, récupérer intelligemment et rester motivé.
-
-━━━ PROFIL ━━━
-Prénom      : ${ctx.firstName} ${ctx.lastName}
-Niveau      : ${ctx.experience}
-Sports      : ${sports || 'Non définis'}
-CTL actuelle: ${ctx.currentCTL}
-Objectif    : ${ctx.goal}
-Date cible  : ${ctx.objectiveDate}
-
-━━━ SÉANCES RÉCENTES ━━━
-${workoutsBlock}
-
-━━━ RÈGLES ━━━
-- Toujours en français, ton encourageant et professionnel
-- Réponses courtes et actionnables (3-5 phrases sauf si demande détaillée)
-- Réfère-toi aux données du profil quand pertinent
-- Ne jamais inventer des données non fournies`;
 }
 
 // ─── Messages formatter (format Gemini contents[]) ───────────────────────────
@@ -123,7 +64,7 @@ export async function POST(req: Request) {
         }
 
         const payload = {
-            system_instruction: { parts: [{ text: buildSystemPrompt(context) }] },
+            system_instruction: { parts: [{ text: buildChatSystemPrompt(context) }] },
             contents,
             generationConfig: { maxOutputTokens: 1024, temperature: 0.7 },
         };

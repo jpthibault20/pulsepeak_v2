@@ -56,12 +56,15 @@ export async function updateWorkoutStatus(
 
     // Atomic per-row update — pas de read-modify-write sur tout le schedule
     // Invalider les caches IA quand les données changent
-    await updateWorkoutById(workout.id, { status, completedData, aiSummary: null, aiDeviationCache: null });
+    await updateWorkoutById(workout.id, { status, completedData, aiDeviationCache: null });
 
     // Recalcul CTL/ATL après tout changement de statut
     await recalculateFitnessMetrics();
 
     revalidatePath('/');
+    // Le cache de /seance/[id] est distinct : sans ça, un retour arrière
+    // après modification réafficherait des données périmées.
+    revalidatePath('/seance/[id]', 'page');
 }
 
 
@@ -98,6 +101,9 @@ export async function toggleWorkoutMode(workoutId: string) {
         schedule.workouts[index].mode = currentMode === 'Outdoor' ? 'Indoor' : 'Outdoor';
         await saveSchedule(schedule);
         revalidatePath('/');
+    // Le cache de /seance/[id] est distinct : sans ça, un retour arrière
+    // après modification réafficherait des données périmées.
+    revalidatePath('/seance/[id]', 'page');
     }
 }
 
@@ -155,6 +161,9 @@ export async function moveWorkout(workoutId: string, newDateStr: string) {
     }
 
     revalidatePath('/');
+    // Le cache de /seance/[id] est distinct : sans ça, un retour arrière
+    // après modification réafficherait des données périmées.
+    revalidatePath('/seance/[id]', 'page');
 }
 
 
@@ -217,6 +226,9 @@ export async function unlinkStravaWorkout(workoutId: string, targetWorkoutId: st
     }
 
     revalidatePath('/');
+    // Le cache de /seance/[id] est distinct : sans ça, un retour arrière
+    // après modification réafficherait des données périmées.
+    revalidatePath('/seance/[id]', 'page');
 }
 
 
@@ -276,6 +288,9 @@ export async function addManualWorkout(workout: Workout) {
 
     await saveSchedule(schedule);
     revalidatePath('/');
+    // Le cache de /seance/[id] est distinct : sans ça, un retour arrière
+    // après modification réafficherait des données périmées.
+    revalidatePath('/seance/[id]', 'page');
 }
 
 
@@ -283,6 +298,9 @@ export async function addManualWorkout(workout: Workout) {
 export async function deleteWorkout(workoutId: string) {
     await deleteWorkoutById(workoutId);
     revalidatePath('/');
+    // Le cache de /seance/[id] est distinct : sans ça, un retour arrière
+    // après modification réafficherait des données périmées.
+    revalidatePath('/seance/[id]', 'page');
 }
 
 
@@ -302,9 +320,11 @@ export async function updateWorkoutRPE(workoutId: string, rpe: number): Promise<
 
     await updateWorkoutById(workoutId, {
         completedData: updatedCompletedData,
-        aiSummary: null,
         aiDeviationCache: null,
     });
 
     revalidatePath('/');
+    // Le cache de /seance/[id] est distinct : sans ça, un retour arrière
+    // après modification réafficherait des données périmées.
+    revalidatePath('/seance/[id]', 'page');
 }

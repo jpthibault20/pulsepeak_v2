@@ -25,12 +25,12 @@ interface CalendarViewProps {
     profile: Profile;
     userID: string;
     objectives: Objective[];
-    onViewWorkout: (workout: Workout) => void;
     onGenerate: (blockFocus: string, customTheme: string | null, startDate: string, numWeeks: number, availability: { [key: string]: import('@/lib/data/type').AvailabilitySlot }) => void;
     onGenerateToObjective: (planStartDate: string, availability: { [key: string]: import('@/lib/data/type').AvailabilitySlot }) => Promise<void>;
     onAddManualWorkout: (workout: Workout) => void;
     onCreatePlannedWorkoutAI: (dateStr: string, sportType: SportType, duration: number, comment: string) => Promise<void>;
     onSaveObjective: (obj: Objective) => Promise<void>;
+    onDeleteObjective: (id: string) => Promise<void>;
     onRefresh: () => void;
     onMoveWorkout: (workoutId: string, newDateStr: string) => Promise<void>;
     onSyncStrava?: () => void;
@@ -39,6 +39,8 @@ interface CalendarViewProps {
     onCalendarDateChange: (date: Date) => void;
     calendarMobileDay: Date;
     onCalendarMobileDayChange: (date: Date) => void;
+    /** Retour au mois courant : efface l'état d'URL au lieu d'y écrire aujourd'hui. */
+    onCalendarReset: () => void;
 }
 
 export function CalendarView({
@@ -46,12 +48,12 @@ export function CalendarView({
     profile,
     userID,
     objectives,
-    onViewWorkout,
     onGenerate,
     onGenerateToObjective,
     onAddManualWorkout,
     onCreatePlannedWorkoutAI,
     onSaveObjective,
+    onDeleteObjective,
     onRefresh,
     onMoveWorkout,
     onSyncStrava,
@@ -60,6 +62,7 @@ export function CalendarView({
     onCalendarDateChange: setSelectedDate,
     calendarMobileDay,
     onCalendarMobileDayChange: setSelectedMobileDay,
+    onCalendarReset,
 }: CalendarViewProps) {
     const selectedDate = calendarDate ?? new Date();
     const selectedMobileDay = calendarMobileDay ?? new Date();
@@ -149,6 +152,12 @@ export function CalendarView({
         }
     };
 
+    const handleDeleteObjective = async (id: string) => {
+        await onDeleteObjective(id);
+        setShowObjectiveModal(false);
+        setEditingObjective(null);
+    };
+
     const goToMonthDay = (newYear: number, newMonth: number) => {
         const normalized = new Date(newYear, newMonth);
         setSelectedDate(normalized);
@@ -167,9 +176,9 @@ export function CalendarView({
     };
     const handleActualMonth = () => {
         const today = new Date();
-        setSelectedDate(new Date(today.getFullYear(), today.getMonth()));
+        // Le libellé mobile est un état local : l'effacement d'URL ne le touche pas.
         setMobileDisplayMonth({ year: today.getFullYear(), month: today.getMonth() });
-        setSelectedMobileDay(today);
+        onCalendarReset();
     };
     const handleNextMonth = () => {
         const d = new Date(mobileDisplayMonth.year, mobileDisplayMonth.month + 1);
@@ -350,7 +359,6 @@ export function CalendarView({
                 scheduleData,
                 profile,
                 objectives,
-                onViewWorkout,
                 onEditObjective: handleEditObjective,
                 onRefresh,
                 onOpenGenModal: () => setShowGenModal(true),
@@ -548,6 +556,7 @@ export function CalendarView({
                     isOpen={showObjectiveModal}
                     onClose={() => { setShowObjectiveModal(false); setEditingObjective(null); }}
                     onSave={handleSaveObjective}
+                    onDelete={handleDeleteObjective}
                     initial={editingObjective}
                     initialDate={editingObjective ? undefined : (dateForAction ? `${dateForAction.getFullYear()}-${String(dateForAction.getMonth() + 1).padStart(2, '0')}-${String(dateForAction.getDate()).padStart(2, '0')}` : undefined)}
                     isSaving={isSavingObjective}

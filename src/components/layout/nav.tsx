@@ -14,18 +14,33 @@ import Link from 'next/link';
 import { ThemeToggle } from '@/components/ThemeProvider';
 import { useSubscription } from '@/lib/subscription/context';
 
-export type View = 'dashboard' | 'plan' | 'settings' | 'stats' | 'workout-detail' | 'onboarding' | 'welcome' | 'loading' | 'chat';
+export type View = 'dashboard' | 'plan' | 'settings' | 'stats' | 'onboarding' | 'welcome' | 'loading' | 'chat';
 
 interface NavProps {
     onViewChange: (view: View) => void;
+    /**
+     * Clic sur le logo. Sans lui, il se comporte comme l'onglet Agenda ; les
+     * pages qui portent un état dans l'URL s'en servent pour tout remettre à
+     * zéro (retour au domaine nu) plutôt que de conserver le mois consulté.
+     */
+    onLogoClick?: () => void;
     currentView: string;
     appName?: string;
+    /**
+     * 'detail' masque la barre du bas (mobile) : sur un écran de tâche comme le
+     * détail de séance, la navigation globale s'efface pour libérer la zone du
+     * pouce au profit de l'action principale. Le retour se fait par le
+     * sub-header ou le geste système.
+     */
+    variant?: 'app' | 'detail';
 }
 
 export const Nav: React.FC<NavProps> = ({
     onViewChange,
+    onLogoClick,
     currentView,
     appName = "PulsePeak",
+    variant = 'app',
 }) => {
     const isActive = (v: View) => currentView === v;
     const { plan, role } = useSubscription();
@@ -41,7 +56,7 @@ export const Nav: React.FC<NavProps> = ({
 
                     {/* ── Left: logo (toujours visible) ── */}
                     <button
-                        onClick={() => onViewChange('dashboard')}
+                        onClick={() => (onLogoClick ? onLogoClick() : onViewChange('dashboard'))}
                         className="flex items-center gap-2.5"
                     >
                         <div className="relative w-7 h-7">
@@ -93,6 +108,7 @@ export const Nav: React.FC<NavProps> = ({
             {/* ══════════════════════════════════════════════
                 BOTTOM BAR  —  mobile only, floating pill
             ══════════════════════════════════════════════ */}
+            {variant === 'app' && (
             <div className="md:hidden fixed bottom-3 left-3 right-3 z-50">
                 {/* Pill container */}
                 <div className="relative bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200/80 dark:border-white/8 rounded-2xl shadow-lg shadow-slate-900/10 dark:shadow-black/60 h-16 flex items-center px-1">
@@ -104,6 +120,7 @@ export const Nav: React.FC<NavProps> = ({
                     <MobileItem active={isActive('settings')} onClick={() => onViewChange('settings')} icon={UserRound} label="Profil" />
                 </div>
             </div>
+            )}
         </>
     );
 };

@@ -22,16 +22,17 @@
 
 import { randomUUID } from 'crypto';
 import { after } from 'next/server';
-import { addDays } from 'date-fns';
 import { parseLocalDate } from '@/lib/utils';
 import {
     getBlock,
+    getPlan,
     getProfile,
     getWeek,
     getWorkout,
     saveWeek,
     saveWorkoutsBatch,
 } from '@/lib/data/crud';
+import { findBlockAndWeekForDate } from './_internals/week-finder';
 import { setStravaLastSync } from '@/lib/profile-db';
 import type { SportType } from '@/lib/data/type';
 import { Workout } from '@/lib/data/DatabaseTypes';
@@ -77,12 +78,15 @@ export async function syncStravaActivities(forceFull = false) {
 
     try {
         // 1. Charger les données actuelles
-        const [profile, existingWorkouts, existingWeeks, existingBlocks] = await Promise.all([
+        const [profile, existingWorkouts, existingWeeks, existingBlocks, existingPlans] = await Promise.all([
             getProfile(),
             getWorkout(),
             getWeek(),
             getBlock(),
+            getPlan(),
         ]);
+
+        const activePlan = (existingPlans ?? []).find(p => p.status === 'active');
 
         const workouts: Workout[] = existingWorkouts ?? [];
 
@@ -232,38 +236,28 @@ export async function syncStravaActivities(forceFull = false) {
                     : completedData.metrics.cycling ? 'cycling'
                     : 'other';
 
-                // Trouver la semaine du bloc actif correspondant à cette date
+                // Trouver la semaine du plan ACTIF correspondant à cette date.
+                // Le rattachement passe par findBlockAndWeekForDate, scopé au plan
+                // actif : les blocs des plans archivés couvrent les mêmes dates et
+                // l'activité se retrouverait rattachée à une semaine obsolète.
                 let activeWeekID = '';
                 const newWorkoutId = randomUUID();
-                if (existingBlocks && existingWeeks) {
-                    const activityDateObj = parseLocalDate(activityDate);
+                if (activePlan && existingBlocks && existingWeeks) {
+                    const found = findBlockAndWeekForDate(
+                        existingBlocks,
+                        existingWeeks,
+                        parseLocalDate(activityDate),
+                        activePlan.id,
+                    );
 
-                    const activeBlock = existingBlocks.find(block => {
-                        const blockStart = parseLocalDate(block.startDate);
-                        const blockEnd = addDays(blockStart, block.weekCount * 7);
-                        return activityDateObj >= blockStart && activityDateObj < blockEnd;
-                    });
-
-                    if (activeBlock) {
-                        const blockStart = parseLocalDate(activeBlock.startDate);
-                        const blockWeeks = existingWeeks.filter(w => activeBlock.weeksId?.includes(w.id));
-                        const activeWeek = blockWeeks.find(week => {
-                            const weekStart = addDays(blockStart, (week.weekNumber - 1) * 7);
-                            const weekEnd = addDays(weekStart, 6);
-                            return activityDateObj >= weekStart && activityDateObj <= weekEnd;
-                        });
-
-                        if (activeWeek) {
-                            activeWeekID = activeWeek.id;
-                            const weekIdx = updatedWeeks.findIndex(w => w.id === activeWeek.id);
-                            if (weekIdx !== -1) {
-                                if (!updatedWeeks[weekIdx].workoutsId.includes(newWorkoutId)) {
-                                    updatedWeeks[weekIdx] = {
-                                        ...updatedWeeks[weekIdx],
-                                        workoutsId: [...updatedWeeks[weekIdx].workoutsId, newWorkoutId],
-                                    };
-                                }
-                            }
+                    if (found) {
+                        activeWeekID = found.week.id;
+                        const weekIdx = updatedWeeks.findIndex(w => w.id === found.week.id);
+                        if (weekIdx !== -1 && !updatedWeeks[weekIdx].workoutsId.includes(newWorkoutId)) {
+                            updatedWeeks[weekIdx] = {
+                                ...updatedWeeks[weekIdx],
+                                workoutsId: [...updatedWeeks[weekIdx].workoutsId, newWorkoutId],
+                            };
                         }
                     }
                 }

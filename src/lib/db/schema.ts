@@ -197,6 +197,9 @@ export const workouts = pgTable('workouts', {
 
     plannedData:   jsonb('planned_data').$type<PlannedData>(),
     completedData: jsonb('completed_data').$type<CompletedData>(),
+    // LEGACY — ancien cache du résumé IA post-séance, retiré de l'app (faisait
+    // doublon avec l'analyse Strava). Colonne conservée volontairement pour ne
+    // pas perdre l'historique ; plus lue ni écrite par le code applicatif.
     aiSummary:     text('ai_summary'),
     aiDeviationCache: jsonb('ai_deviation_cache').$type<DeviationMetrics>(),
 }, (t) => [

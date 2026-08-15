@@ -98,9 +98,18 @@ export async function getCompletedBlocksHistory(): Promise<string> {
     const lines = sortedBlocks.map(block => {
         const blockEnd = addWeeks(parseLocalDate(block.startDate), block.weekCount);
         const isPast = today > blockEnd;
-        const isCurrent = today >= parseLocalDate(block.startDate) && today <= blockEnd;
-        const status = isCurrent ? '🔵 EN COURS' : isPast ? '✅ TERMINÉ' : '⏳ À VENIR';
         const plan = plans.find(p => p.id === block.planId);
+
+        // Un bloc d'un plan archivé ne peut être ni "en cours" ni "à venir" : le
+        // plan a été remplacé. Sans ça, l'ancien bloc (ex. PMA) était présenté à
+        // l'IA comme le bloc courant et son thème repartait dans le nouveau plan.
+        const isActivePlan = plan?.status === 'active';
+        const isCurrent = isActivePlan && today >= parseLocalDate(block.startDate) && today <= blockEnd;
+        const status = isCurrent
+            ? '🔵 EN COURS'
+            : isPast ? '✅ TERMINÉ'
+            : isActivePlan ? '⏳ À VENIR' : '⛔ ABANDONNÉ (plan remplacé)';
+
         return `- [${status}] ${block.type} — "${block.theme}" (${block.weekCount} sem, du ${block.startDate}) | CTL: ${block.startCTL}→${block.targetCTL} | Plan: ${plan?.name ?? 'N/A'}`;
     });
 
@@ -264,16 +273,38 @@ export async function analyzeAthleteContext(
 /**
  * Calcule le taux de complétion moyen des 4 dernières semaines.
  * Remplace le hardcoded 100 pour donner un feedback réel à l'IA.
+ *
+ * `weekNumber` est relatif au bloc (1..weekCount) : il faut donc ordonner par
+ * (ordre du bloc, n° de semaine) et rester dans le plan de la semaine courante,
+ * sinon on mélange les blocs et les plans archivés encore présents en base.
  */
-export function computeAvgCompletion(workouts: Workout[], weeks: Week[], currentWeekId: string): number {
+export function computeAvgCompletion(
+    workouts: Workout[],
+    weeks: Week[],
+    blocks: Block[],
+    currentWeekId: string,
+): number {
     // Trouver les 4 semaines précédant la semaine courante
     const currentWeek = weeks.find(w => w.id === currentWeekId);
     if (!currentWeek) return 100;
 
+    const blockById = new Map(blocks.map(b => [b.id, b]));
+    const currentBlock = blockById.get(currentWeek.blockId);
+    if (!currentBlock) return 100;
+
     const previousWeeks = weeks
-        .filter(w => w.id !== currentWeekId && w.weekNumber < currentWeek.weekNumber)
-        .sort((a, b) => b.weekNumber - a.weekNumber)
-        .slice(0, 4);
+        .filter(w => w.id !== currentWeekId)
+        .map(w => ({ week: w, block: blockById.get(w.blockId) }))
+        .filter(e =>
+            e.block?.planId === currentBlock.planId
+            && (e.block.orderIndex < currentBlock.orderIndex
+                || (e.block.orderIndex === currentBlock.orderIndex && e.week.weekNumber < currentWeek.weekNumber))
+        )
+        .sort((a, b) =>
+            (b.block!.orderIndex - a.block!.orderIndex) || (b.week.weekNumber - a.week.weekNumber)
+        )
+        .slice(0, 4)
+        .map(e => e.week);
 
     if (previousWeeks.length === 0) return 100;
 
@@ -302,18 +333,33 @@ export function getPreviousWeekSummary(
     const currentWeek = weeks.find(w => w.id === currentWeekId);
     if (!currentWeek) return "Aucune semaine précédente disponible.";
 
-    // Chercher la semaine juste avant (même bloc ou bloc précédent)
-    const allWeeksSorted = weeks
-        .filter(w => w.id !== currentWeekId)
-        .sort((a, b) => {
-            const blockA = blocks.find(bl => bl.id === a.blockId);
-            const blockB = blocks.find(bl => bl.id === b.blockId);
-            if (!blockA || !blockB) return 0;
-            if (blockA.orderIndex !== blockB.orderIndex) return blockB.orderIndex - blockA.orderIndex;
-            return b.weekNumber - a.weekNumber;
-        });
+    const blockById = new Map(blocks.map(b => [b.id, b]));
+    const currentBlock = blockById.get(currentWeek.blockId);
+    if (!currentBlock) return "Aucune semaine précédente disponible.";
 
-    const prevWeek = allWeeksSorted[0];
+    // Chercher la semaine juste AVANT la semaine courante, dans le même plan.
+    // Deux garde-fous indispensables :
+    //  - `weeks`/`blocks` contiennent aussi les plans archivés (conservés par
+    //    prepareArchive) : sans le filtre sur planId, la "semaine précédente"
+    //    pouvait être celle d'un ancien plan et injecter son thème dans le prompt.
+    //  - l'ordre (bloc, semaine) doit être comparé À la position courante, sinon
+    //    on remonte simplement la dernière semaine du plan.
+    const orderOf = (w: Week): [number, number] | null => {
+        const b = blockById.get(w.blockId);
+        if (!b || b.planId !== currentBlock.planId) return null;
+        return [b.orderIndex, w.weekNumber];
+    };
+    const isBefore = ([blockIdx, weekNum]: [number, number]) =>
+        blockIdx < currentBlock.orderIndex
+        || (blockIdx === currentBlock.orderIndex && weekNum < currentWeek.weekNumber);
+
+    const prevWeek = weeks
+        .filter(w => w.id !== currentWeekId)
+        .map(w => ({ week: w, order: orderOf(w) }))
+        .filter((e): e is { week: Week; order: [number, number] } => e.order !== null && isBefore(e.order))
+        .sort((a, b) => (b.order[0] - a.order[0]) || (b.order[1] - a.order[1]))[0]
+        ?.week;
+
     if (!prevWeek) return "Première semaine du plan — pas de semaine précédente.";
 
     const prevWorkouts = workouts.filter(w => w.weekId === prevWeek.id);

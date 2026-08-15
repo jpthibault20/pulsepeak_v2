@@ -17,11 +17,38 @@ npm run db:push          # push Drizzle schema to Supabase (dev flow)
 npm run db:generate      # generate SQL migrations from schema
 npm run db:migrate       # apply migrations
 npm run db:studio        # Drizzle Studio UI
+
+npm run test             # Vitest, one-shot
+npm run test:watch       # Vitest, watch mode
 ```
 
-No test runner is configured — there is no `test` script and no test files in the repo. Verify changes via `npm run build` (type-check) + `npm run lint` + manual testing in `npm run dev`.
-
 `drizzle.config.ts` loads `DATABASE_URL` from `.env.local` via `dotenv`. All other env vars (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `GEMINI_API_KEY`, `STRAVA_CLIENT_ID`/`SECRET`, `NEXT_PUBLIC_BASE_URL`) are required at runtime — see README for the full list.
+
+## Testing
+
+### Tests ship with the change — always, without being asked
+
+Any code modification (bug fix, refactor, new feature) includes its test update **in the same pass**. This is not an optional follow-up step:
+
+1. **The touched module already has a `.test.ts`** → update it in the same edit. New behaviour gets new cases; changed behaviour gets adjusted assertions. State in the summary which existing expectations changed and why — an assertion quietly rewritten to match new output is how a regression ships unnoticed.
+2. **The touched module is a pure function with no test file** → create `<module>.test.ts` next to it, covering at minimum the new/changed path plus its edge cases (empty, zero, null, out-of-range).
+3. **Behaviour removed** → delete its tests too.
+4. **Before reporting done** → run `npm run test`, `npm run lint` and `npm run build`, and report the real counts. Never announce green without having run it.
+
+**Assert what the code *should* do, not what it currently does.** If a new test exposes a pre-existing bug, do not weaken the assertion to make it pass: report the bug with a proposed fix and let the user decide. (This is how the `1:60` pace-formatting bug in `computeTSS.ts` was found.)
+
+### Scope
+
+In scope: **pure functions** — calculations, conversions, mappers, formatters, guard clauses, date arithmetic. Out of scope: React rendering, Server Actions, `crud.ts`, and anything that calls Gemini / Supabase / Strava over the network. If a feature lands mostly in those layers, pull the decision logic into a pure helper (`_internals/`, `src/lib/stats/`) and test that helper — never mock half the app to reach a branch.
+
+### Conventions
+
+- **Vitest**, configured in `vitest.config.mts`: `node` environment, `@` → `src/` alias, `TZ` pinned to `Europe/Paris` (several calculations build local `Date`s, so an unpinned timezone makes the suite machine-dependent).
+- Test files follow `src/**/*.test.ts`, colocated with the module under test.
+- Shared object builders live in **`src/test/fixtures.ts`** (`makeProfile`, `makeWorkout`, `makeCompletedData`, `makePlannedData`, `makeZones`, `makeObjective`, `makeBlock`/`makeWeek`, `makeCyclingMetrics`/`makeRunningMetrics`, `makeLap`, `makeSlot`). Each returns a minimal valid object overridable field by field — **add new fixtures there rather than redeclaring them in a test file**, so a new mandatory domain field only has to be fixed in one place.
+- Functions reading `new Date()` (`computePMC`, `computeWeeklyTSS`) are tested with `vi.useFakeTimers()` + `vi.setSystemTime()`.
+- A module importing `crud.ts` is tested by mocking it: `vi.mock('@/lib/data/crud', …)` — see `strava-mapper.test.ts`.
+- Test names are in French, like the rest of the codebase, and describe the rule being enforced ("retient la minute quand l'arrondi atteint 60 s"), not the function's name.
 
 ## Architecture
 
@@ -36,7 +63,7 @@ The schedule domain lives in `src/app/actions/schedule/` (no barrel — **import
 - `plan-creation.ts` — `CreateAdvancedPlan`, `CreatePlanToObjective` (+ private `CreateBlocks`, `CreateWeeks`, `applyTaperToWeeks`)
 - `week-actions.ts` — `getWeekContextForDate`, `getWeekPendingCount`, `generateWeekWorkoutsFromDate` + type `WeekContext`
 - `workout-actions.ts` — CRUD direct: status, toggle mode, move, unlink Strava, add/delete manual, RPE update
-- `workout-ai.ts` — AI-driven: `createPlannedWorkoutAI`, `regenerateWorkout`, `getWorkoutAISummary`, `getWorkoutDeviation`, `regenerateWeekFromDeviation`
+- `workout-ai.ts` — AI-driven: `createPlannedWorkoutAI`, `regenerateWorkout`, `getWorkoutDeviation`, `regenerateWeekFromDeviation`
 - `strava-sync.ts` — `syncStravaActivities`
 - `plan-overview.ts` — `getPlanOverview` + types `PlanOverviewBlock/Week/Data`
 - `fitness-metrics.ts` — `recalculateFitnessMetrics` (CTL/ATL)
@@ -68,11 +95,16 @@ The proxy entry point is **`src/proxy.ts`** (not `middleware.ts`) — Next.js 16
 
 ### AI layer (`src/lib/ai/`)
 
-Single Gemini endpoint (`gemini-2.5-flash`) called from `coach-api.ts`. Two generation modes:
-- Full plan / block generation (called from `CreateAdvancedPlan` in `actions/schedule/plan-creation.ts`) — returns a flat list of `RawAIWorkout` that the server then groups into blocks/weeks using helpers in `actions/helpers.ts` (`computeBlockSkeletons`, `computeWeeklyTSS`, `buildTaperPlan`, etc.).
-- Single workout regeneration — `generateSingleWorkoutFromAI`.
+`coach-api.ts` owns the single Gemini endpoint (`gemini-2.5-flash`) via `callGeminiAPI` — every AI call in the app goes through it. Three prompt sites, each owning its own prompt:
+- **Block / periodization structure** — `CreateBlocks` and `CreateBlocksToObjective` in `actions/schedule/plan-creation.ts`; the returned skeletons are turned into weeks with `actions/helpers.ts` (`computeBlockSkeletons`, `computeWeeklyTSS`, `buildTaperPlan`, etc.).
+- **Week of workouts** — the heavy prompt (zones, availabilities, taper J-x, continuity with previous week) lives in `actions/schedule/_internals/workout-generator.ts` (`CreateWorkoutForWeek`).
+- **Single workout** — `generateSingleWorkoutFromAI` in `coach-api.ts`, called from `actions/schedule/workout-ai.ts`.
 
-The heavy per-week prompt (zones, availabilities, taper J-x, continuity with previous week) lives in `actions/schedule/_internals/workout-generator.ts` (`CreateWorkoutForWeek`). `structure-session.ts` is a separate Gemini call that parses free-text workout descriptions into structured segments.
+`structure-session.ts` is a separate Gemini call that parses free-text workout descriptions into structured segments.
+
+**Coach persona:** `coach-persona.ts` holds `buildCoachRoleIntro(coachType)` — the role line prepended to every prompt, driven by `profiles.coachType` (falls back to `triathlon`). It is a pure, dependency-free module so the chat prompt can use it too; the four prompt builders above plus `chat-prompt.ts` all open on it. Adding a new AI prompt means opening it with `buildCoachRoleIntro`, never with a hand-written role.
+
+`chat-prompt.ts` builds the system prompt of the conversational coach (`/api/chat`); the route only streams. The client sends `coachType` in the `ChatContext` (`ChatView.tsx`, `ChatWidget.tsx`).
 
 **Rate limiting:** `checkAndIncrementAICallLimit()` in `actions/schedule/_internals/rate-limit.ts` uses `atomicIncrementAICallCount` (DB-atomic) and per-day resets (`aiPlanCallsResetDate`, `aiWorkoutCallsResetDate` on `profiles`). Free plan = 3 plan/10 workout calls/day; pro/dev/admin = effectively unlimited. Token usage is tracked separately via `atomicIncrementTokenCount` against `tokenPerMonth`.
 
@@ -89,3 +121,13 @@ Training-science tunables — `CTL_PROGRESSION`, `CTL_LEVEL_MULTIPLIER`, `TAPER_
 `src/app/page.tsx` is the only protected page — it fetches `profile/schedule/objectives` in parallel and hands them to `AppClientWrapper.tsx`, which drives the whole SPA (calendar / plan / chat / profile / stats tabs). Features live in `src/components/features/<domain>/`; shared primitives in `src/components/ui/` (`Button`, `Card`, `Badge`, `Modale`).
 
 The calendar uses a React Context (`src/components/features/calendar/CalendarContext.tsx`) for cross-component state (selected date, popovers). Mobile and desktop views are separate components (`MobileCalendarList` vs. `CalendarGrid`).
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

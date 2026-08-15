@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import Link from 'next/link';
 import {
     Clock, Zap, Check, X,
     Bike, Footprints, Waves, Dumbbell, Activity
@@ -8,7 +9,13 @@ import { getWorkoutTSS } from '@/lib/stats/computeTSS';
 
 interface WorkoutBadgeProps {
     workout: Workout;
-    onClick: (e: React.MouseEvent) => void;
+    /**
+     * Cible du badge. Un vrai lien apporte le prefetch, le Ctrl+clic vers un
+     * nouvel onglet et « copier le lien » — impossibles avec un onClick.
+     */
+    href?: string;
+    /** Utilisé uniquement quand `href` est absent (cas hérités). */
+    onClick?: (e: React.MouseEvent) => void;
     isCompact?: boolean;
     // Active le glisser-déposer (vue ordinateur) : uniquement pour les séances non complétées.
     enableDrag?: boolean;
@@ -27,7 +34,7 @@ const SPORT_CONFIG: Record<string, { icon: React.ElementType, color: string, bg:
     default: { icon: Activity, color: 'text-slate-400', bg: 'bg-slate-500' }
 };
 
-export function WorkoutBadge({ workout, onClick, isCompact = false, enableDrag = false }: WorkoutBadgeProps) {
+export function WorkoutBadge({ workout, href, onClick, isCompact = false, enableDrag = false }: WorkoutBadgeProps) {
     // --- Extraction des données ---
     const sportKey = workout.sportType?.toLowerCase() || 'default';
     const config = SPORT_CONFIG[sportKey] || SPORT_CONFIG.default;
@@ -42,6 +49,10 @@ export function WorkoutBadge({ workout, onClick, isCompact = false, enableDrag =
 
     const handleDragStart = (e: React.DragEvent) => {
         e.dataTransfer.effectAllowed = 'move';
+        // Un <a> est nativement draggable : le navigateur pousse son URL dans le
+        // dataTransfer. On efface d'abord pour que seul le MIME custom subsiste,
+        // sinon un drop hors calendrier ouvrirait/collerait le lien.
+        e.dataTransfer.clearData();
         e.dataTransfer.setData(
             WORKOUT_DND_MIME,
             JSON.stringify({ id: workout.id, date: workout.date }),
@@ -70,24 +81,25 @@ export function WorkoutBadge({ workout, onClick, isCompact = false, enableDrag =
         containerStyle = `border-l-2 ${sportBorder} bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-750`;
     }
 
-    return (
-        <div
-            onClick={onClick}
-            draggable={canDrag}
-            onDragStart={canDrag ? handleDragStart : undefined}
-            onDragEnd={canDrag ? () => setIsDragging(false) : undefined}
-            title={canDrag ? 'Glisser vers un autre jour pour replanifier' : undefined}
-            className={`
-                relative flex flex-col gap-1
-                w-full rounded-r-md shadow-sm transition-all duration-200
-                overflow-hidden group
-                ${canDrag ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}
-                ${isDragging ? 'opacity-40' : ''}
-                ${containerStyle}
-                ${isCompact ? 'p-1.5' : 'p-2'}
-                mb-1.5
-            `}
-        >
+    const shared = {
+        draggable: canDrag,
+        onDragStart: canDrag ? handleDragStart : undefined,
+        onDragEnd: canDrag ? () => setIsDragging(false) : undefined,
+        title: canDrag ? 'Glisser vers un autre jour pour replanifier' : undefined,
+        className: `
+            relative flex flex-col gap-1
+            w-full rounded-r-md shadow-sm transition-all duration-200
+            overflow-hidden group
+            ${canDrag ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}
+            ${isDragging ? 'opacity-40' : ''}
+            ${containerStyle}
+            ${isCompact ? 'p-1.5' : 'p-2'}
+            mb-1.5
+        `,
+    };
+
+    const inner = (
+        <>
             {/* --- EN-TÊTE : Icone Sport + Titre + Badge Indoor --- */}
             <div className="flex items-start justify-between gap-1.5">
                 <div className="flex items-center gap-2 min-w-0">
@@ -158,6 +170,12 @@ export function WorkoutBadge({ workout, onClick, isCompact = false, enableDrag =
                     </div>
                 </div>
             )}
-        </div>
+        </>
     );
+
+    // Un vrai <a> quand une cible existe : prefetch, Ctrl+clic, copier le lien.
+    if (href) {
+        return <Link href={href} {...shared}>{inner}</Link>;
+    }
+    return <div onClick={onClick} {...shared}>{inner}</div>;
 }

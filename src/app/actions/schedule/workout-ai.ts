@@ -3,7 +3,6 @@
  * @brief   Server Actions IA autour d'une séance unique :
  *          - création d'une séance planifiée via Gemini
  *          - régénération d'une séance existante
- *          - résumé IA (cache DB) d'une séance complétée
  *          - métriques de déviation planifié vs réalisé (cache DB)
  *          - régénération adaptative du reste de la semaine après déviation
  *
@@ -43,7 +42,8 @@ import {
 /**
  * Création d'une séance planifiée via l'IA.
  * L'IA reçoit l'historique récent et les séances voisines pour cohérence.
- * La durée demandée par l'utilisateur prime sur celle proposée par l'IA.
+ * La durée demandée par l'utilisateur est la cible que la structure générée doit
+ * atteindre (±5 %) ; la durée finale de la séance en est déduite.
  */
 export async function createPlannedWorkoutAI(
     dateStr: string,
@@ -76,6 +76,7 @@ export async function createPlannedWorkoutAI(
             undefined,
             "General Fitness",
             instruction,
+            durationMinutes,
         );
         if (tkCreate > 0) await atomicIncrementTokenCount(tkCreate);
 
@@ -90,13 +91,16 @@ export async function createPlannedWorkoutAI(
             completedData: null,
         };
 
-        // Forcer la durée demandée si l'IA s'en écarte
-        if (workout.plannedData) {
-            workout.plannedData.durationMinutes = durationMinutes;
-        }
+        // La durée demandée est passée EN AMONT à l'IA (cible de la structure) et
+        // la durée finale est déduite des blocs générés. L'écraser ici la
+        // désaccorderait du contenu réel de la séance : une structure de 16 min
+        // étiquetée 60 min, c'est le bug que ce chemin produisait.
 
         await insertSingleWorkout(workout);
         revalidatePath('/');
+    // Le cache de /seance/[id] est distinct : sans ça, un retour arrière
+    // après modification réafficherait des données périmées.
+    revalidatePath('/seance/[id]', 'page');
     } catch (error) {
         console.error("Échec création séance IA:", error);
         throw new Error("L'IA n'a pas pu créer la séance.");
@@ -137,7 +141,8 @@ export async function regenerateWorkout(workoutId: string, instruction?: string)
             surroundingWorkouts,
             oldWorkout,
             blockFocus,
-            instruction
+            instruction,
+            oldWorkout.plannedData?.durationMinutes,
         );
         if (tkRegen > 0) await atomicIncrementTokenCount(tkRegen);
 
@@ -154,39 +159,13 @@ export async function regenerateWorkout(workoutId: string, instruction?: string)
 
         await saveSchedule(existingSchedule);
         revalidatePath('/');
+    // Le cache de /seance/[id] est distinct : sans ça, un retour arrière
+    // après modification réafficherait des données périmées.
+    revalidatePath('/seance/[id]', 'page');
 
     } catch (error) {
         console.error("Échec régénération:", error);
         throw new Error("L'IA n'a pas pu créer la séance.");
-    }
-}
-
-
-/**
- * Renvoie le résumé IA d'une séance complétée. Résultat mis en cache dans
- * `workout.aiSummary` : hit → renvoie directement, miss → appelle Gemini puis persiste.
- */
-export async function getWorkoutAISummary(workout: Workout): Promise<string> {
-    // Cache hit → retourner directement
-    if (workout.aiSummary) return workout.aiSummary;
-
-    const { generateWorkoutSummary } = await import('@/lib/ai/coach-api');
-    const profile = await getProfile();
-    if (!profile || !workout.completedData) return "";
-    try {
-        const { summary, tokensUsed } = await generateWorkoutSummary(profile, workout);
-        // Persister en DB pour ne plus recalculer
-        if (summary) {
-            await updateWorkoutById(workout.id, { aiSummary: summary });
-        }
-        // Comptabiliser les tokens
-        if (tokensUsed > 0) {
-            await atomicIncrementTokenCount(tokensUsed);
-        }
-        return summary;
-    } catch (e) {
-        console.error("AI Summary error:", e);
-        return "";
     }
 }
 
@@ -292,7 +271,8 @@ Score déviation: ${deviation.score}`;
                 surroundingContext,
                 pendingWorkout,
                 currentBlockFocus,
-                adaptInstruction
+                adaptInstruction,
+                pendingWorkout.plannedData?.durationMinutes,
             );
             if (tkAdapt > 0) await atomicIncrementTokenCount(tkAdapt);
 
@@ -312,5 +292,8 @@ Score déviation: ${deviation.score}`;
     }
 
     revalidatePath('/');
+    // Le cache de /seance/[id] est distinct : sans ça, un retour arrière
+    // après modification réafficherait des données périmées.
+    revalidatePath('/seance/[id]', 'page');
     return { updatedCount };
 }

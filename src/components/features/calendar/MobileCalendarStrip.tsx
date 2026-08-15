@@ -6,6 +6,7 @@ import type { Workout, Objective } from '@/lib/data/DatabaseTypes';
 import { WorkoutBadge } from './WorkoutBadge';
 import { MobileWeekBar } from './MobileWeekBar';
 import { useCalendarContext } from './CalendarContext';
+import { useSeanceHref } from '@/hooks/useSeanceHref';
 import { formatDateKey, DAY_NAMES_SHORT, MONTH_NAMES, parseLocalDate } from '@/lib/utils';
 import type { WeekStats } from '@/hooks/useWeekStats';
 import { getWorkoutTSS } from '@/lib/stats/computeTSS';
@@ -140,7 +141,8 @@ export function MobileCalendarStrip({
     onOpenManualModal,
     onVisibleMonthChange,
 }: MobileCalendarStripProps) {
-    const { scheduleData, profile, objectives, onViewWorkout, onEditObjective, onRefresh, onOpenGenModal } = useCalendarContext();
+    const { scheduleData, profile, objectives, onEditObjective, onRefresh, onOpenGenModal } = useCalendarContext();
+    const seanceHref = useSeanceHref('calendar');
     const scrollRef = useRef<HTMLDivElement>(null);
     const todayKey = useMemo(() => formatDateKey(new Date()), []);
     const parentSelectedKey = formatDateKey(selectedDay);
@@ -587,7 +589,7 @@ export function MobileCalendarStrip({
                         <WorkoutBadge
                             key={workout.id}
                             workout={workout}
-                            onClick={() => onViewWorkout(workout)}
+                            href={seanceHref(workout.id)}
                             isCompact={false}
                         />
                     ))}

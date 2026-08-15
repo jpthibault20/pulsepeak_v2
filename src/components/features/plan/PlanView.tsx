@@ -1,21 +1,24 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 import {
     Calendar, ChevronDown, ChevronUp, Bike, Footprints, Waves, Activity,
     Loader2, AlertCircle, Sparkles, Trophy, TrendingUp, Clock, CheckCircle2,
-    MessageSquare, RotateCcw, Flag, X, Settings2,
+    MessageSquare, RotateCcw, Flag, X, Settings2, Pencil,
 } from 'lucide-react';
 import { getPlanOverview, type PlanOverviewData, type PlanOverviewBlock, type PlanOverviewWeek } from '@/app/actions/schedule/plan-overview';
 import { generateWeekWorkoutsFromDate } from '@/app/actions/schedule/week-actions';
 import { WeekGenerationProgressModal, type WeekGenProgressState } from '@/components/features/calendar/WeekGenerationProgressModal';
 import { GenerationModal } from '@/components/features/calendar/GenerationModal';
 import { PlanManageModal } from '@/components/features/plan/PlanManageModal';
+import { ObjectiveModal } from '@/components/features/calendar/ObjectiveModal';
 import { Button } from '@/components/ui/Button';
 import type { Objective, Profile } from '@/lib/data/DatabaseTypes';
 import type { AvailabilitySlot } from '@/lib/data/type';
 import { FeatureGate } from '@/components/features/billing/FeatureGate';
 import { parseLocalDate } from '@/lib/utils';
+import { useSeanceHref } from '@/hooks/useSeanceHref';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -47,17 +50,20 @@ interface PlanViewProps {
     profile: Profile;
     objectives: Objective[];
     onRefresh: () => void;
-    onViewWorkout?: (workoutId: string) => void;
     onGenerate: (blockFocus: string, customTheme: string | null, startDate: string, numWeeks: number, availability: { [key: string]: AvailabilitySlot }) => Promise<void>;
     onGenerateToObjective: (planStartDate: string, availability: { [key: string]: AvailabilitySlot }) => Promise<void>;
+    onSaveObjective: (obj: Objective) => Promise<void>;
+    onDeleteObjective: (id: string) => Promise<void>;
 }
 
-export function PlanView({ profile, objectives: userObjectives, onRefresh, onViewWorkout, onGenerate, onGenerateToObjective }: PlanViewProps) {
+export function PlanView({ profile, objectives: userObjectives, onRefresh, onGenerate, onGenerateToObjective, onSaveObjective, onDeleteObjective }: PlanViewProps) {
     const [data, setData] = useState<PlanOverviewData | null>(null);
     const [loading, setLoading] = useState(true);
     const [expandedBlock, setExpandedBlock] = useState<string | null>(null);
     const [regenTarget, setRegenTarget] = useState<{ blockId: string; weekId?: string } | null>(null);
     const [managing, setManaging] = useState(false);
+    const [editingObjective, setEditingObjective] = useState<Objective | null>(null);
+    const [isSavingObjective, setIsSavingObjective] = useState(false);
     const [weekGenProgress, setWeekGenProgress] = useState<WeekGenProgressState>({
         active: false, minimized: false, done: false, error: null, startedAt: 0, weekLabel: '',
     });
@@ -78,6 +84,22 @@ export function PlanView({ profile, objectives: userObjectives, onRefresh, onVie
     }, []);
 
     useEffect(() => { load(); }, [load]);
+
+    const handleSaveObjective = useCallback(async (obj: Objective) => {
+        setIsSavingObjective(true);
+        try {
+            await onSaveObjective(obj);
+            await load();
+        } finally {
+            setIsSavingObjective(false);
+        }
+        // La fermeture est pilotée par ObjectiveModal (onClose).
+    }, [onSaveObjective, load]);
+
+    const handleDeleteObjective = useCallback(async (id: string) => {
+        await onDeleteObjective(id);
+        await load();
+    }, [onDeleteObjective, load]);
 
     if (loading) {
         return (
@@ -160,18 +182,25 @@ export function PlanView({ profile, objectives: userObjectives, onRefresh, onVie
                             const days = Math.max(0, Math.ceil((parseLocalDate(obj.date).getTime() - Date.now()) / 86400000));
                             const isPrimary = obj.priority === 'principale';
                             return (
-                                <div key={obj.id} className={`
-                                    shrink-0 flex items-center gap-2.5 px-3 py-2 rounded-xl border text-xs
-                                    ${isPrimary
-                                        ? 'bg-rose-50 dark:bg-rose-500/10 border-rose-200 dark:border-rose-500/30'
-                                        : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700'}
-                                `}>
+                                <button
+                                    key={obj.id}
+                                    type="button"
+                                    onClick={() => setEditingObjective(obj)}
+                                    title="Modifier ou supprimer cet objectif"
+                                    className={`
+                                        group shrink-0 flex items-center gap-2.5 px-3 py-2 rounded-xl border text-xs text-left transition-colors
+                                        ${isPrimary
+                                            ? 'bg-rose-50 dark:bg-rose-500/10 border-rose-200 dark:border-rose-500/30 hover:bg-rose-100 dark:hover:bg-rose-500/20'
+                                            : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'}
+                                    `}
+                                >
                                     {isPrimary ? <Trophy size={13} className="text-rose-500 shrink-0" /> : <Flag size={13} className="text-slate-400 shrink-0" />}
                                     <div className="min-w-0">
                                         <p className={`font-semibold truncate ${isPrimary ? 'text-rose-700 dark:text-rose-300' : 'text-slate-700 dark:text-slate-300'}`}>{obj.name}</p>
                                         <p className="text-slate-500 dark:text-slate-400">{obj.date} · J-{days}</p>
                                     </div>
-                                </div>
+                                    <Pencil size={12} className="shrink-0 text-slate-400 dark:text-slate-500 opacity-60 group-hover:opacity-100 transition-opacity" />
+                                </button>
                             );
                         })}
                     </div>
@@ -193,7 +222,6 @@ export function PlanView({ profile, objectives: userObjectives, onRefresh, onVie
                             expanded={expandedBlock === block.id}
                             onToggle={() => setExpandedBlock(expandedBlock === block.id ? null : block.id)}
                             onRegenerate={(weekId) => setRegenTarget({ blockId: block.id, weekId })}
-                            onViewWorkout={onViewWorkout}
                             profile={profile}
                         />
                     ))}
@@ -217,6 +245,18 @@ export function PlanView({ profile, objectives: userObjectives, onRefresh, onVie
                     onClose={() => setRegenTarget(null)}
                     onDone={() => { setRegenTarget(null); load(); onRefresh(); }}
                     onSetProgress={setWeekGenProgress}
+                />
+            )}
+
+            {/* ── Objective Modal (édition / suppression) ──────── */}
+            {editingObjective && (
+                <ObjectiveModal
+                    isOpen
+                    onClose={() => setEditingObjective(null)}
+                    onSave={handleSaveObjective}
+                    onDelete={handleDeleteObjective}
+                    initial={editingObjective}
+                    isSaving={isSavingObjective}
                 />
             )}
 
@@ -330,11 +370,10 @@ interface BlockCardProps {
     expanded: boolean;
     onToggle: () => void;
     onRegenerate: (weekId?: string) => void;
-    onViewWorkout?: (workoutId: string) => void;
     profile: Profile;
 }
 
-function BlockCard({ block, isFirst, expanded, onToggle, onRegenerate, onViewWorkout }: BlockCardProps) {
+function BlockCard({ block, isFirst, expanded, onToggle, onRegenerate }: BlockCardProps) {
     const config = BLOCK_TYPE_CONFIG[block.type] ?? BLOCK_TYPE_CONFIG.General;
     const completionPct = block.totalCount > 0 ? Math.round((block.completedCount / block.totalCount) * 100) : 0;
     const tssRatio = block.totalPlannedTSS > 0 ? Math.round((block.totalActualTSS / block.totalPlannedTSS) * 100) : 0;
@@ -405,7 +444,6 @@ function BlockCard({ block, isFirst, expanded, onToggle, onRegenerate, onViewWor
                                 blockType={block.type}
                                 blockStartDate={block.startDate}
                                 onRegenerate={() => onRegenerate(week.id)}
-                                onViewWorkout={onViewWorkout}
                             />
                         ))}
 
@@ -433,10 +471,10 @@ interface WeekRowProps {
     blockType: string;
     blockStartDate: string;
     onRegenerate: () => void;
-    onViewWorkout?: (workoutId: string) => void;
 }
 
-function WeekRow({ week, blockType, onRegenerate, onViewWorkout }: WeekRowProps) {
+function WeekRow({ week, blockType, onRegenerate }: WeekRowProps) {
+    const seanceHref = useSeanceHref('plan');
     const effectiveType = (week.type === 'Load' && blockType === 'Taper') ? 'Taper' : week.type;
     const badge = WEEK_TYPE_BADGE[effectiveType] ?? WEEK_TYPE_BADGE.Load;
     const todayStr = new Date().toISOString().slice(0, 10);
@@ -487,9 +525,9 @@ function WeekRow({ week, blockType, onRegenerate, onViewWorkout }: WeekRowProps)
                         const SportIcon = SPORT_ICON[w.sportType] ?? Activity;
                         const sportColor = SPORT_COLOR[w.sportType] ?? 'text-slate-400';
                         return (
-                            <button
+                            <Link
                                 key={w.id}
-                                onClick={() => onViewWorkout?.(w.id)}
+                                href={seanceHref(w.id)}
                                 className={`
                                     flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium transition-colors
                                     ${w.status === 'completed'
@@ -504,7 +542,7 @@ function WeekRow({ week, blockType, onRegenerate, onViewWorkout }: WeekRowProps)
                             >
                                 <SportIcon size={10} className={sportColor} />
                                 <span className="max-w-20 truncate">{w.title}</span>
-                            </button>
+                            </Link>
                         );
                     })}
                 </div>

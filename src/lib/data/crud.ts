@@ -40,7 +40,6 @@ function toWorkout(row: typeof workoutsTable.$inferSelect): Workout {
         status:        row.status,
         plannedData:   row.plannedData   as PlannedData,
         completedData: row.completedData as CompletedData | null,
-        aiSummary:     row.aiSummary ?? null,
         aiDeviationCache: row.aiDeviationCache as DeviationMetrics | null ?? null,
     };
 }
@@ -242,6 +241,149 @@ export async function getWorkout(): Promise<Workout[] | null> {
     if (!rows.length) return null;
 
     return rows.map(toWorkout);
+}
+
+// ─── Lectures ciblées pour la page /seance/[id] ───────────────────────────────
+// Ces fonctions évitent de charger tout le schedule pour afficher une séance.
+// Comme partout ici, userId vient de la session : une séance appartenant à un
+// autre utilisateur est simplement introuvable (jamais un 403, on ne révèle pas
+// l'existence de l'id).
+
+export async function getWorkoutById(workoutId: string): Promise<Workout | null> {
+    const userId = await getCurrentUserId();
+
+    const row = await db.query.workouts.findFirst({
+        where: and(eq(workoutsTable.id, workoutId), eq(workoutsTable.userId, userId)),
+    });
+
+    return row ? toWorkout(row) : null;
+}
+
+/** Séance voisine dans l'ordre chronologique (date, id) — le même que la vue calendrier. */
+export interface WorkoutNeighbour {
+    id: string;
+    title: string;
+    date: string;
+    sportType: Workout['sportType'];
+}
+
+/**
+ * Résout les séances précédente et suivante par comparaison de tuple Postgres
+ * `(date, id)`, ce qui donne un ordre total stable même quand plusieurs séances
+ * partagent la même date. Deux requêtes LIMIT 1 au lieu du tri de tout le plan.
+ */
+export async function getWorkoutNeighbours(
+    workoutId: string,
+): Promise<{ prev: WorkoutNeighbour | null; next: WorkoutNeighbour | null }> {
+    const userId = await getCurrentUserId();
+
+    const current = await db.query.workouts.findFirst({
+        where:   and(eq(workoutsTable.id, workoutId), eq(workoutsTable.userId, userId)),
+        columns: { id: true, date: true },
+    });
+    if (!current) return { prev: null, next: null };
+
+    const cols = { id: true, title: true, date: true, sportType: true } as const;
+
+    const [prevRow, nextRow] = await Promise.all([
+        db.query.workouts.findFirst({
+            where: and(
+                eq(workoutsTable.userId, userId),
+                sql`(${workoutsTable.date}, ${workoutsTable.id}) < (${current.date}::date, ${current.id}::uuid)`,
+            ),
+            orderBy: (w, { desc }) => [desc(w.date), desc(w.id)],
+            columns: cols,
+        }),
+        db.query.workouts.findFirst({
+            where: and(
+                eq(workoutsTable.userId, userId),
+                sql`(${workoutsTable.date}, ${workoutsTable.id}) > (${current.date}::date, ${current.id}::uuid)`,
+            ),
+            orderBy: (w, { asc }) => [asc(w.date), asc(w.id)],
+            columns: cols,
+        }),
+    ]);
+
+    return { prev: prevRow ?? null, next: nextRow ?? null };
+}
+
+/** Toutes les séances d'une date, triées comme la navigation (pour « Ce jour-là »). */
+export async function getWorkoutsOnDate(date: string): Promise<Workout[]> {
+    const userId = await getCurrentUserId();
+
+    const rows = await db.query.workouts.findMany({
+        where:   and(eq(workoutsTable.userId, userId), eq(workoutsTable.date, date)),
+        orderBy: (w, { asc }) => [asc(w.date), asc(w.id)],
+    });
+
+    return rows.map(toWorkout);
+}
+
+/**
+ * Candidats à la réattribution d'une activité Strava déliée.
+ * Filtre repris à l'identique de l'ancienne vue détail : même date, id
+ * différent, statut `pending`, ET même sport — la condition sur le sport est
+ * facile à perdre en déplaçant le code, elle est ici volontaire.
+ */
+export async function getSameDayWorkouts(
+    date: string,
+    excludeId: string,
+    sportType: Workout['sportType'],
+): Promise<Workout[]> {
+    const userId = await getCurrentUserId();
+
+    const rows = await db.query.workouts.findMany({
+        where: and(
+            eq(workoutsTable.userId, userId),
+            eq(workoutsTable.date, date),
+            ne(workoutsTable.id, excludeId),
+            eq(workoutsTable.status, 'pending'),
+            eq(workoutsTable.sportType, sportType),
+        ),
+        orderBy: (w, { asc }) => [asc(w.id)],
+    });
+
+    return rows.map(toWorkout);
+}
+
+/** Position de la séance dans son plan — alimente le fil d'Ariane et le rail contexte. */
+export interface WorkoutPlanContext {
+    planName: string | null;
+    planGoalDate: string | null;
+    blockType: string | null;
+    blockTheme: string | null;
+    blockOrderIndex: number | null;
+    blockWeekCount: number | null;
+    weekNumber: number | null;
+    weekType: string | null;
+    weekTargetTSS: number | null;
+    weekActualTSS: number | null;
+}
+
+export async function getWorkoutPlanContext(workoutId: string): Promise<WorkoutPlanContext | null> {
+    const userId = await getCurrentUserId();
+
+    const rows = await db
+        .select({
+            planName:        plansTable.name,
+            planGoalDate:    plansTable.goalDate,
+            blockType:       blocksTable.type,
+            blockTheme:      blocksTable.theme,
+            blockOrderIndex: blocksTable.orderIndex,
+            blockWeekCount:  blocksTable.weekCount,
+            weekNumber:      weeksTable.weekNumber,
+            weekType:        weeksTable.type,
+            weekTargetTSS:   weeksTable.targetTSS,
+            weekActualTSS:   weeksTable.actualTSS,
+        })
+        .from(workoutsTable)
+        .innerJoin(weeksTable, eq(workoutsTable.weekId, weeksTable.id))
+        .innerJoin(blocksTable, eq(weeksTable.blockId, blocksTable.id))
+        .innerJoin(plansTable, eq(blocksTable.planId, plansTable.id))
+        .where(and(eq(workoutsTable.id, workoutId), eq(workoutsTable.userId, userId)))
+        .limit(1);
+
+    return rows[0] ?? null;
 }
 
 // ─── SAVE ─────────────────────────────────────────────────────────────────────
@@ -627,7 +769,7 @@ export async function atomicIncrementTokenCount(tokens: number): Promise<void> {
 
 export async function updateWorkoutById(
     workoutId: string,
-    data: Partial<Pick<Workout, 'date' | 'status' | 'completedData' | 'title' | 'sportType' | 'weekId' | 'plannedData' | 'workoutType' | 'mode' | 'aiSummary' | 'aiDeviationCache'>>,
+    data: Partial<Pick<Workout, 'date' | 'status' | 'completedData' | 'title' | 'sportType' | 'weekId' | 'plannedData' | 'workoutType' | 'mode' | 'aiDeviationCache'>>,
 ): Promise<void> {
     const userId = await getCurrentUserId();
     await db
