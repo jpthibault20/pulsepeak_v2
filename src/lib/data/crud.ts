@@ -79,6 +79,13 @@ function toProfile(row: typeof profiles.$inferSelect): Profile {
         aiWorkoutCallsResetDate:row.aiWorkoutCallsResetDate ?? undefined,
         tokenPerMonth:          row.tokenPerMonth ?? 0,
         tokenPerMonthResetDate: row.tokenPerMonthResetDate ?? undefined,
+        stripeCustomerId:       row.stripeCustomerId ?? undefined,
+        stripeSubscriptionId:   row.stripeSubscriptionId ?? undefined,
+        stripePriceId:          row.stripePriceId ?? undefined,
+        billingStatus:          row.billingStatus ?? undefined,
+        currentPeriodEnd:       row.currentPeriodEnd instanceof Date ? row.currentPeriodEnd.toISOString() : (row.currentPeriodEnd ?? null),
+        cancelAtPeriodEnd:      row.cancelAtPeriodEnd ?? false,
+        billingInterval:        (row.billingInterval as 'month' | 'year' | null) ?? undefined,
         theme:              (row.theme as 'dark' | 'light') ?? 'dark',
         workouts:           [],
     };
@@ -721,8 +728,9 @@ export async function deleteWorkoutsByIds(workoutIds: string[]): Promise<void> {
 
 export async function atomicIncrementAICallCount(
     type: 'plan' | 'workout',
-    today: string,
+    periodValue: string,
     limit: number,
+    period: 'day' | 'month' = 'day',
 ): Promise<void> {
     const userId = await getCurrentUserId();
 
@@ -731,23 +739,25 @@ export async function atomicIncrementAICallCount(
     const countKey  = type === 'plan' ? 'aiPlanCallsCount'              : 'aiWorkoutCallsCount';
     const dateKey   = type === 'plan' ? 'aiPlanCallsResetDate'          : 'aiWorkoutCallsResetDate';
 
-    // Reset if new day, then check limit, then increment — all in one atomic UPDATE
+    // Reset if new period (jour ou 1er du mois selon `period`), puis vérifie la limite, puis incrémente — tout en une seule UPDATE atomique
     const result = await db
         .update(profiles)
         .set({
-            [countKey]: sql`CASE WHEN ${dateCol} = ${today} THEN ${countCol} + 1 ELSE 1 END`,
-            [dateKey]:  today,
+            [countKey]: sql`CASE WHEN ${dateCol} = ${periodValue} THEN ${countCol} + 1 ELSE 1 END`,
+            [dateKey]:  periodValue,
         })
         .where(and(
             eq(profiles.id, userId),
-            // Only update if count is under the limit (or it's a new day)
-            sql`(${dateCol} != ${today} OR ${countCol} < ${limit})`,
+            // Only update if count is under the limit (or it's a new period)
+            sql`(${dateCol} != ${periodValue} OR ${countCol} < ${limit})`,
         ))
         .returning({ id: profiles.id });
 
     if (result.length === 0) {
+        const periodLabel = period === 'month' ? 'mensuelle' : 'journalière';
+        const retryLabel  = period === 'month' ? 'le mois prochain' : 'demain';
         throw new Error(
-            `Limite journalière atteinte (${limit} ${type === 'plan' ? 'plans' : 'régénérations'}/jour). Réessaie demain.`
+            `Limite ${periodLabel} atteinte (${limit} ${type === 'plan' ? 'plans' : 'régénérations'}/${period === 'month' ? 'mois' : 'jour'}). Réessaie ${retryLabel}.`
         );
     }
 }

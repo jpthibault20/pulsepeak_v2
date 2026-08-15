@@ -172,6 +172,22 @@ export const TAPER_RULES_PRINCIPAL: Record<number, TaperDayRule> = {
  * Règles J-x pour un objectif SECONDAIRE (fenêtre 4 jours).
  * Mini-taper : on ne sacrifie pas le bloc d'entraînement en cours.
  */
+// ---- Abonnement Stripe -------------------------------------------------------
+
+/**
+ * Date de fin de l'offre de lancement (tarif réduit 5€/mois).
+ * Après cette date, seuls les tarifs Pro normaux (9€/mois, 90€/an) sont proposés
+ * aux nouveaux abonnés. Les abonnés déjà sur le tarif de lancement le conservent
+ * (le prix Stripe souscrit ne change pas tant qu'ils restent abonnés).
+ */
+export const LAUNCH_OFFER_END_DATE = '2026-12-31';
+
+/**
+ * Nombre de générations de plan IA autorisées par mois pour le plan gratuit.
+ */
+export const FREE_PLAN_MONTHLY_AI_GENERATIONS = 1;
+
+
 export const TAPER_RULES_SECONDARY: Record<number, TaperDayRule> = {
     4: {
         label:             'J-4 · Intensité courte (rappel)',

@@ -20,7 +20,7 @@ import {
 // Import des types
 import type { SportType } from '@/lib/data/type';
 import type { Objective, Workout } from '@/lib/data/DatabaseTypes';
-import { SubscriptionProvider, type Plan } from '@/lib/subscription/context';
+import { SubscriptionProvider, toSubscriptionStatus, type Plan } from '@/lib/subscription/context';
 import { FreePlanGate } from '@/components/features/billing/FreePlanGate';
 
 // Import des composants
@@ -479,7 +479,14 @@ export default function AppClientWrapper({ initialProfile, initialSchedule, init
     }
 
     return (
-        <SubscriptionProvider subscription={{ role: profile.role, plan: (profile.plan ?? 'free') as Plan }}>
+        <SubscriptionProvider subscription={{
+            role:              profile.role,
+            plan:              (profile.plan ?? 'free') as Plan,
+            status:            toSubscriptionStatus(profile.billingStatus),
+            currentPeriodEnd:  profile.currentPeriodEnd ?? null,
+            cancelAtPeriodEnd: profile.cancelAtPeriodEnd ?? false,
+            hasStripeCustomer: !!profile.stripeCustomerId,
+        }}>
             <div className="flex flex-col min-h-dvh">
                 {showNav && (
                     <Nav

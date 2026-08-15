@@ -19,6 +19,7 @@ import {
     computePMC, computeWeeklyTSS, getTSBStatus, aggregateZones, getWorkoutTSS
 } from '@/lib/stats/computePMC';
 import { useTheme } from '@/components/ThemeProvider';
+import { FeatureGate } from '@/components/features/billing/FeatureGate';
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 
@@ -883,7 +884,9 @@ export const StatsView: React.FC<StatsViewProps> = ({ scheduleData, profile, obj
 
             {/* ── TOP SECTION: PMC + KPIs ──────────────────────────────── */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <PMCSnapshot ctl={currentCTL} atl={currentATL} nextObjective={nextObjective} theme={theme} />
+                <FeatureGate feature="advanced-stats" mode="blur" label="Forme du jour">
+                    <PMCSnapshot ctl={currentCTL} atl={currentATL} nextObjective={nextObjective} theme={theme} />
+                </FeatureGate>
 
                 {/* KPI Grid */}
                 <div className="grid grid-cols-2 gap-3">
@@ -931,6 +934,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ scheduleData, profile, obj
             </div>
 
             {/* ── PMC CHART ─────────────────────────────────────────────── */}
+            <FeatureGate feature="advanced-stats" mode="blur" label="Performance Management Chart">
             <Card className="p-4 md:p-6">
                 <div className="flex items-center justify-between mb-2">
                     <div>
@@ -1045,8 +1049,10 @@ export const StatsView: React.FC<StatsViewProps> = ({ scheduleData, profile, obj
                     </div>
                 )}
             </Card>
+            </FeatureGate>
 
             {/* ── WEEKLY TSS + COMPLIANCE ──────────────────────────────── */}
+            <FeatureGate feature="advanced-stats" mode="blur" label="Charge hebdomadaire">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
                 {/* Weekly TSS Bars */}
@@ -1114,8 +1120,10 @@ export const StatsView: React.FC<StatsViewProps> = ({ scheduleData, profile, obj
                     </div>
                 </Card>
             </div>
+            </FeatureGate>
 
             {/* ── SPORT TABS + ZONES ───────────────────────────────────── */}
+            <FeatureGate feature="advanced-stats" mode="blur" label="Distribution des efforts">
             <Card className="p-4 md:p-6">
                 <div className="flex items-center gap-1.5 mb-4">
                     <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Distribution des efforts</h3>
@@ -1153,6 +1161,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ scheduleData, profile, obj
                     </div>
                 </div>
             </Card>
+            </FeatureGate>
 
             {/* ── OBJECTIVES TIMELINE ───────────────────────────────────── */}
             {upcomingObjectives.length > 0 && (

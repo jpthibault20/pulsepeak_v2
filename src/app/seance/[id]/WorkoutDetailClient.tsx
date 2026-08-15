@@ -130,7 +130,7 @@ export default function WorkoutDetailClient({
                 router.refresh();
             } catch (e) {
                 console.error(e);
-                setError('Impossible de mettre à jour le statut.');
+                setError(e instanceof Error ? e.message : 'Impossible de mettre à jour le statut.');
             } finally {
                 setIsMutating(false);
             }
@@ -148,7 +148,7 @@ export default function WorkoutDetailClient({
             router.refresh();
         } catch (e) {
             console.error(e);
-            setError('Impossible de déplacer la séance.');
+            setError(e instanceof Error ? e.message : 'Impossible de déplacer la séance.');
         } finally {
             setIsMutating(false);
         }
@@ -178,7 +178,7 @@ export default function WorkoutDetailClient({
             router.push(backHref);
         } catch (e) {
             console.error(e);
-            setError('Impossible de supprimer la séance.');
+            setError(e instanceof Error ? e.message : 'Impossible de supprimer la séance.');
             setIsMutating(false);
         }
     };

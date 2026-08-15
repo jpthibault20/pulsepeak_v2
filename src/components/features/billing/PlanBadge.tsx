@@ -11,7 +11,7 @@ interface PlanBadgeProps {
 
 const CONFIG: Record<Plan, { label: string; className: string }> = {
     free: { label: 'GRATUIT',  className: 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-600' },
-    dev:  { label: 'DEV BÊTA', className: 'bg-amber-50 dark:bg-amber-600/20 text-amber-600 dark:text-amber-300 border-amber-200 dark:border-amber-500/40' },
+    dev:  { label: 'ACCÈS COMPLET', className: 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-300 border-blue-200 dark:border-blue-500/40' },
     pro:  { label: 'PRO',      className: 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-300 border-blue-200 dark:border-blue-500/40' },
 };
 

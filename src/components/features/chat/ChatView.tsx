@@ -3,6 +3,7 @@
 import { Bot, Send, Loader2, Zap, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Profile, Schedule } from "@/lib/data/DatabaseTypes";
+import { FeatureGate } from "@/components/features/billing/FeatureGate";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -217,73 +218,77 @@ export function ChatView({ profile, schedule, messages, onMessagesChange }: Chat
                 </div>
             )}
 
-            {/* ── Messages ── */}
-            <div
-                ref={scrollRef}
-                className="flex-1 overflow-y-auto px-4 py-4 space-y-4"
-            >
-                {messages.map((msg, i) => (
+            <FeatureGate feature="chat-ai" mode="blur" label="Coach IA">
+                <>
+                    {/* ── Messages ── */}
                     <div
-                        key={i}
-                        className={`flex items-end gap-2.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                        ref={scrollRef}
+                        className="flex-1 overflow-y-auto px-4 py-4 space-y-4"
                     >
-                        {/* AI avatar */}
-                        {msg.role === 'ai' && (
-                            <div className="w-7 h-7 rounded-xl bg-blue-100 dark:bg-blue-600/20 border border-blue-200 dark:border-blue-500/20 flex items-center justify-center shrink-0 mb-0.5">
-                                <Bot size={14} className="text-blue-600 dark:text-blue-400" />
-                            </div>
-                        )}
+                        {messages.map((msg, i) => (
+                            <div
+                                key={i}
+                                className={`flex items-end gap-2.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                            >
+                                {/* AI avatar */}
+                                {msg.role === 'ai' && (
+                                    <div className="w-7 h-7 rounded-xl bg-blue-100 dark:bg-blue-600/20 border border-blue-200 dark:border-blue-500/20 flex items-center justify-center shrink-0 mb-0.5">
+                                        <Bot size={14} className="text-blue-600 dark:text-blue-400" />
+                                    </div>
+                                )}
 
-                        {/* Bubble */}
-                        <div className={`
-                            max-w-[78%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed
-                            ${msg.role === 'user'
-                                ? 'bg-blue-600 text-white rounded-br-sm'
-                                : 'bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 rounded-bl-sm border border-slate-200 dark:border-slate-700/50'
-                            }
-                        `}>
-                            {msg.text ? msg.text : (msg.streaming && (
-                                <span className="flex gap-1 items-center h-4 px-1">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:0ms]" />
-                                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:150ms]" />
-                                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:300ms]" />
-                                </span>
-                            ))}
+                                {/* Bubble */}
+                                <div className={`
+                                    max-w-[78%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed
+                                    ${msg.role === 'user'
+                                        ? 'bg-blue-600 text-white rounded-br-sm'
+                                        : 'bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 rounded-bl-sm border border-slate-200 dark:border-slate-700/50'
+                                    }
+                                `}>
+                                    {msg.text ? msg.text : (msg.streaming && (
+                                        <span className="flex gap-1 items-center h-4 px-1">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:0ms]" />
+                                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:150ms]" />
+                                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:300ms]" />
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* ── Input ── */}
+                    <div className="px-4 py-3 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
+                        <div className="flex gap-2 items-end">
+                            <textarea
+                                ref={inputRef}
+                                rows={1}
+                                value={input}
+                                onChange={e => setInput(e.target.value)}
+                                onKeyDown={e => {
+                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                        e.preventDefault();
+                                        handleSend();
+                                    }
+                                }}
+                                placeholder="Posez votre question..."
+                                disabled={loading}
+                                className="flex-1 min-h-[44px] max-h-48 py-2.5 resize-none overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden bg-slate-100 dark:bg-slate-800/80 border border-slate-300 dark:border-slate-700 rounded-2xl px-4 text-sm leading-6 text-slate-900 dark:text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500/50 disabled:opacity-60 transition-colors"
+                            />
+                            <button
+                                onClick={() => handleSend()}
+                                disabled={loading || !input.trim()}
+                                className="w-11 h-11 flex items-center justify-center bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-2xl text-white transition-colors shrink-0"
+                            >
+                                {loading
+                                    ? <Loader2 size={16} className="animate-spin" />
+                                    : <Send size={16} />
+                                }
+                            </button>
                         </div>
                     </div>
-                ))}
-            </div>
-
-            {/* ── Input ── */}
-            <div className="px-4 py-3 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
-                <div className="flex gap-2 items-end">
-                    <textarea
-                        ref={inputRef}
-                        rows={1}
-                        value={input}
-                        onChange={e => setInput(e.target.value)}
-                        onKeyDown={e => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                                e.preventDefault();
-                                handleSend();
-                            }
-                        }}
-                        placeholder="Posez votre question..."
-                        disabled={loading}
-                        className="flex-1 min-h-[44px] max-h-48 py-2.5 resize-none overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden bg-slate-100 dark:bg-slate-800/80 border border-slate-300 dark:border-slate-700 rounded-2xl px-4 text-sm leading-6 text-slate-900 dark:text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500/50 disabled:opacity-60 transition-colors"
-                    />
-                    <button
-                        onClick={() => handleSend()}
-                        disabled={loading || !input.trim()}
-                        className="w-11 h-11 flex items-center justify-center bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-2xl text-white transition-colors shrink-0"
-                    >
-                        {loading
-                            ? <Loader2 size={16} className="animate-spin" />
-                            : <Send size={16} />
-                        }
-                    </button>
-                </div>
-            </div>
+                </>
+            </FeatureGate>
         </div>
     );
 }

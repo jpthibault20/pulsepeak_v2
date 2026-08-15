@@ -44,6 +44,11 @@ const FEATURE_CONTENT: Record<Feature, { title: string; desc: string; highlights
         desc: 'Posez toutes vos questions à votre coach IA en temps réel.',
         highlights: ['Conversation illimitée', 'Conseils personnalisés', 'Disponible 24/7'],
     },
+    'calendar-write': {
+        title: 'Calendrier modifiable',
+        desc: 'Déplacez vos séances, marquez-les terminées et ajustez votre planning librement.',
+        highlights: ['Déplacer une séance', 'Valider / reporter', 'Planning entièrement modifiable'],
+    },
 };
 
 export function PaywallModal({ isOpen, onClose, feature, label }: PaywallModalProps) {
@@ -85,13 +90,13 @@ export function PaywallModal({ isOpen, onClose, feature, label }: PaywallModalPr
                     ))}
                 </ul>
 
-                {/* Dev plan teaser */}
+                {/* Teaser Pro */}
                 <div className="bg-amber-50 dark:bg-amber-500/5 border border-amber-200 dark:border-amber-500/20 rounded-xl px-4 py-3 mb-4">
                     <div className="flex items-center justify-between">
-                        <span className="text-amber-600 dark:text-amber-300 text-sm font-semibold">Offre Développeur</span>
-                        <span className="text-amber-600 dark:text-amber-300 font-bold">5€<span className="text-amber-500 text-xs font-normal">/mois</span></span>
+                        <span className="text-amber-600 dark:text-amber-300 text-sm font-semibold">Plan Pro</span>
+                        <span className="text-amber-600 dark:text-amber-300 font-bold">à partir de 5€<span className="text-amber-500 text-xs font-normal">/mois</span></span>
                     </div>
-                    <p className="text-slate-500 text-xs mt-0.5">Accès complet · Phase bêta</p>
+                    <p className="text-slate-500 text-xs mt-0.5">Accès complet · Sans engagement</p>
                 </div>
 
                 <button

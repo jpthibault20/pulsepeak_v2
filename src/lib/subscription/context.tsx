@@ -8,6 +8,19 @@ export type Plan     = 'free' | 'dev' | 'pro';
 export type Status   = 'active' | 'trial' | 'past_due' | 'cancelled';
 export type UserRole = 'user' | 'freeUse' | 'admin';
 
+type BillingStatus = 'active' | 'past_due' | 'canceled' | 'incomplete';
+
+/** Convertit le statut Stripe stocké en base (profiles.billingStatus) vers le Status du contexte. */
+export function toSubscriptionStatus(billingStatus: BillingStatus | undefined | null): Status {
+    switch (billingStatus) {
+        case 'canceled':   return 'cancelled';
+        case 'past_due':   return 'past_due';
+        case 'incomplete': return 'past_due';
+        case 'active':
+        default:           return 'active';
+    }
+}
+
 export interface Subscription {
     plan:   Plan;
     status: Status;
@@ -15,6 +28,12 @@ export interface Subscription {
     trialEndsAt?:       string | null;
     currentPeriodEnd?:  string | null;
     cancelAtPeriodEnd?: boolean;
+    /**
+     * true seulement si un vrai client Stripe existe (checkout complété au moins une fois).
+     * Un plan 'pro' octroyé à la main (admin) sans passer par Stripe reste à false — dans ce
+     * cas il n'y a rien à gérer via le Billing Portal.
+     */
+    hasStripeCustomer?: boolean;
 }
 
 // ─── Feature map ──────────────────────────────────────────────────────────────
@@ -25,21 +44,25 @@ export type Feature =
     | 'custom-plan-theme'
     | 'annual-stats'
     | 'advanced-stats'
-    | 'chat-ai';
+    | 'chat-ai'
+    | 'calendar-write';
 
-// Pour l'avenir : quand le plan 'pro' sera actif, toutes les features y seront incluses
-const FEATURE_PLANS: Record<Feature, Plan[]> = {
-    'generate-plan':      ['pro'],
+// Features strictement réservées au plan payant. 'generate-plan' n'y figure pas :
+// le free y a droit dans la limite d'un quota mensuel (voir FREE_PLAN_MONTHLY_AI_GENERATIONS
+// et actions/schedule/_internals/rate-limit.ts) — c'est le serveur qui bloque au-delà du quota,
+// pas ce gate client.
+const FEATURE_PLANS: Record<Exclude<Feature, 'generate-plan'>, Plan[]> = {
     'regenerate-workout': ['pro'],
     'custom-plan-theme':  ['pro'],
     'annual-stats':       ['pro'],
     'advanced-stats':     ['pro'],
     'chat-ai':            ['pro'],
+    'calendar-write':     ['pro'],
 };
 
 /**
  * admin, freeUse et le plan 'dev' ont accès illimité à toutes les features.
- * Le plan 'dev' = accès complet pendant la phase bêta (offre 5€/mois).
+ * Le plan 'dev' = octroi manuel (bêta-testeurs, partenaires) assigné depuis /admin.
  */
 export function hasFullAccess(role: UserRole, plan: Plan = 'free'): boolean {
     return role === 'admin' || role === 'freeUse' || plan === 'dev';
@@ -47,12 +70,12 @@ export function hasFullAccess(role: UserRole, plan: Plan = 'free'): boolean {
 
 /**
  * Détermine si un utilisateur peut accéder à une feature donnée.
- * - free  → aucun accès (redirection vers upgrade)
- * - dev   → accès complet (phase bêta)
- * - pro   → accès selon FEATURE_PLANS (futur)
- * - admin/freeUse → accès complet
+ * - generate-plan → toujours true (quota mensuel géré côté serveur pour le free)
+ * - free (autres features) → aucun accès
+ * - pro/dev/admin/freeUse → accès complet
  */
 export function canAccess(feature: Feature, plan: Plan, role: UserRole = 'user'): boolean {
+    if (feature === 'generate-plan') return true;
     if (hasFullAccess(role, plan)) return true;
     if (plan === 'free') return false;
     return FEATURE_PLANS[feature].includes(plan);
@@ -84,6 +107,7 @@ export function SubscriptionProvider({ children, subscription }: SubscriptionPro
         trialEndsAt:       subscription?.trialEndsAt      ?? null,
         currentPeriodEnd:  subscription?.currentPeriodEnd ?? null,
         cancelAtPeriodEnd: subscription?.cancelAtPeriodEnd ?? false,
+        hasStripeCustomer: subscription?.hasStripeCustomer ?? false,
     };
     return (
         <SubscriptionContext.Provider value={value}>

@@ -25,6 +25,7 @@ import { parseLocalDate } from '@/lib/utils';
 import type { CompletedData, CompletedDataFeedback } from '@/lib/data/type';
 import { Workout } from '@/lib/data/DatabaseTypes';
 import {
+    assertCalendarWriteAccess,
     findWorkoutIndex,
     transformFeedbackToCompletedData,
 } from './_internals/workout-helpers';
@@ -41,6 +42,9 @@ export async function updateWorkoutStatus(
     status: 'pending' | 'completed' | 'missed',
     feedback?: CompletedDataFeedback
 ): Promise<void> {
+    const profile = await getProfile();
+    assertCalendarWriteAccess(profile);
+
     const schedule = await getSchedule();
     const index = findWorkoutIndex(schedule.workouts, workoutId);
 
@@ -49,7 +53,6 @@ export async function updateWorkoutStatus(
     }
 
     const workout = schedule.workouts[index];
-    const profile = (status === 'completed' && feedback) ? await getProfile() : null;
     const completedData = (status === 'completed' && feedback)
         ? transformFeedbackToCompletedData(feedback, profile)
         : null;
@@ -93,6 +96,8 @@ export async function resetWorkoutToPending(workoutId: string): Promise<void> {
  * Bascule le mode d'une séance entre Indoor et Outdoor.
  */
 export async function toggleWorkoutMode(workoutId: string) {
+    assertCalendarWriteAccess(await getProfile());
+
     const schedule = await getSchedule();
     const index = findWorkoutIndex(schedule.workouts, workoutId);
 
@@ -119,6 +124,8 @@ export async function toggleWorkoutMode(workoutId: string) {
  * Cas "pending"/"missed" : simple mise à jour de la date.
  */
 export async function moveWorkout(workoutId: string, newDateStr: string) {
+    assertCalendarWriteAccess(await getProfile());
+
     const schedule = await getSchedule();
 
     // 1. Trouver la source par ID
@@ -177,6 +184,8 @@ export async function moveWorkout(workoutId: string, newDateStr: string) {
  *   à la même date, et remettre la séance source en pending.
  */
 export async function unlinkStravaWorkout(workoutId: string, targetWorkoutId: string | null) {
+    assertCalendarWriteAccess(await getProfile());
+
     const schedule = await getSchedule();
 
     const sourceWorkout = schedule.workouts.find(w => w.id === workoutId);
@@ -238,6 +247,8 @@ export async function unlinkStravaWorkout(workoutId: string, targetWorkoutId: st
  */
 export async function addManualWorkout(workout: Workout) {
     const profile = await getProfile();
+    assertCalendarWriteAccess(profile);
+
     const schedule = await getSchedule();
 
     // ✅ Sécurité : forcer le userID au user authentifié
@@ -296,6 +307,8 @@ export async function addManualWorkout(workout: Workout) {
 
 /** Supprime une séance du schedule par ID ou par date. */
 export async function deleteWorkout(workoutId: string) {
+    assertCalendarWriteAccess(await getProfile());
+
     await deleteWorkoutById(workoutId);
     revalidatePath('/');
     // Le cache de /seance/[id] est distinct : sans ça, un retour arrière
@@ -309,6 +322,8 @@ export async function deleteWorkout(workoutId: string) {
  * Invalide les caches IA pour recalculer avec le nouveau RPE.
  */
 export async function updateWorkoutRPE(workoutId: string, rpe: number): Promise<void> {
+    assertCalendarWriteAccess(await getProfile());
+
     const schedule = await getSchedule();
     const workout = schedule.workouts.find(w => w.id === workoutId);
     if (!workout || !workout.completedData) throw new Error("Séance non trouvée ou pas complétée");

@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import type { Workout } from '@/lib/data/DatabaseTypes';
 import { getWorkoutTSS } from '@/lib/stats/computeTSS';
+import { canAccess, useSubscription } from '@/lib/subscription/context';
 
 interface WorkoutBadgeProps {
     workout: Workout;
@@ -43,8 +44,10 @@ export function WorkoutBadge({ workout, href, onClick, isCompact = false, enable
     const isCompleted = workout.status === 'completed';
     const isMissed = workout.status === 'missed';
 
-    // Une séance est déplaçable uniquement si elle n'est pas complétée (pending/missed).
-    const canDrag = enableDrag && !isCompleted;
+    // Une séance est déplaçable uniquement si elle n'est pas complétée (pending/missed)
+    // et que le plan de l'utilisateur autorise l'écriture sur le calendrier (free = lecture seule).
+    const { plan, role } = useSubscription();
+    const canDrag = enableDrag && !isCompleted && canAccess('calendar-write', plan, role);
     const [isDragging, setIsDragging] = useState(false);
 
     const handleDragStart = (e: React.DragEvent) => {
