@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 
 // Import des Server Actions (par sous-module schedule)
 import { saveAthleteProfile, loadInitialData, type ActivePlanSummary } from '@/app/actions/schedule/profile';
@@ -68,7 +68,6 @@ export default function AppClientWrapper({ initialProfile, initialSchedule, init
     // --- État porté par l'URL ---
     // `/?view=plan&month=2026-10&day=2026-10-14`. Ces trois paramètres survivent
     // à l'aller-retour vers /seance/[id], qui démonte ce composant.
-    const router = useRouter();
     const searchParams = useSearchParams();
     const viewParam = searchParams.get('view');
     const monthParam = searchParams.get('month');
@@ -89,11 +88,15 @@ export default function AppClientWrapper({ initialProfile, initialSchedule, init
         }
         const qs = next.toString();
         paramsRef.current = qs;
-        // replace + scroll:false : changer de mois ne doit ni empiler une entrée
-        // d'historique ni renvoyer l'utilisateur en haut de page.
+        // history.replaceState plutôt que router.replace : la page ne lit jamais
+        // `searchParams` côté serveur (voir src/app/page.tsx), donc un aller-retour
+        // par le routeur Next ne ferait que refaire tourner tout le Server Component
+        // (recalculateFitnessMetrics + 4 requêtes DB) à chaque jour survolé sur le
+        // strip mobile. L'API History met à jour l'URL et reste synchronisée avec
+        // useSearchParams() sans navigation ni round-trip serveur.
         // Query vide → `/` nu, pas `/?` : l'état par défaut mérite une URL propre.
-        router.replace(qs ? `/?${qs}` : '/', { scroll: false });
-    }, [router]);
+        window.history.replaceState(null, '', qs ? `/?${qs}` : '/');
+    }, []);
 
     // --- State Management ---
     const startView: View = initialProfile.firstName
