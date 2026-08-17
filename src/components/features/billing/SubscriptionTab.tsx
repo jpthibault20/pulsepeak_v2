@@ -44,14 +44,22 @@ export function SubscriptionTab() {
                             {currentPlan === 'pro'  && `Plan Pro · ${status === 'active' ? (cancelAtPeriodEnd ? 'Résiliation en cours' : 'Actif') : status}`}
                         </p>
                     </div>
-                    <span className={`
-                        px-2.5 py-1 rounded-full text-xs font-bold border
-                        ${currentPlan === 'free' ? 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-600' : ''}
-                        ${currentPlan === 'dev'  ? 'bg-blue-50 dark:bg-blue-500/20 text-blue-600 dark:text-blue-300 border-blue-200 dark:border-blue-500/30' : ''}
-                        ${currentPlan === 'pro'  ? 'bg-amber-50 dark:bg-amber-500/20 text-amber-600 dark:text-amber-300 border-amber-200 dark:border-amber-500/30' : ''}
-                    `}>
-                        {currentPlan === 'free' ? 'GRATUIT' : currentPlan === 'dev' ? 'ACCÈS COMPLET' : 'PRO'}
-                    </span>
+                    {currentPlan === 'free' ? (
+                        <button
+                            onClick={() => router.push('/pricing')}
+                            className="px-2.5 py-1 rounded-full text-xs font-bold border bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-600 hover:opacity-80 transition-opacity"
+                        >
+                            GRATUIT
+                        </button>
+                    ) : (
+                        <span className={`
+                            px-2.5 py-1 rounded-full text-xs font-bold border
+                            ${currentPlan === 'dev' ? 'bg-blue-50 dark:bg-blue-500/20 text-blue-600 dark:text-blue-300 border-blue-200 dark:border-blue-500/30' : ''}
+                            ${currentPlan === 'pro' ? 'bg-amber-50 dark:bg-amber-500/20 text-amber-600 dark:text-amber-300 border-amber-200 dark:border-amber-500/30' : ''}
+                        `}>
+                            {currentPlan === 'dev' ? 'ACCÈS COMPLET' : 'PRO'}
+                        </span>
+                    )}
                 </div>
 
                 {currentPlan === 'free' && (

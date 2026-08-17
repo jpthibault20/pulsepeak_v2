@@ -226,14 +226,27 @@ export function PricingContent({ currentPlan = 'free', launchOfferActive, priceI
                                 Votre plan actuel
                             </div>
                         ) : (
-                            <button
-                                onClick={handleSubscribe}
-                                disabled={isPending || !priceId}
-                                className="flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition-colors shadow-lg shadow-amber-900/30 text-sm"
-                            >
-                                <Zap size={14} />
-                                {isPending ? 'Redirection…' : `Passer au Pro`}
-                            </button>
+                            <>
+                                <button
+                                    onClick={handleSubscribe}
+                                    disabled={isPending || !priceId}
+                                    className="flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition-colors shadow-lg shadow-amber-900/30 text-sm"
+                                >
+                                    <Zap size={14} />
+                                    {isPending ? 'Redirection…' : `Passer au Pro`}
+                                </button>
+                                <p className="text-center text-slate-400 dark:text-slate-500 text-[11px] mt-2 leading-relaxed">
+                                    En choisissant ce plan, vous acceptez les{' '}
+                                    <a
+                                        href="https://pulsepeak.fr/legal-notices"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="underline hover:text-amber-600 dark:hover:text-amber-400"
+                                    >
+                                        mentions légales
+                                    </a>
+                                </p>
+                            </>
                         )}
                     </div>
                 </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import type { Plan, Status } from '@/lib/subscription/context';
 
 interface PlanBadgeProps {
@@ -19,16 +20,32 @@ export function PlanBadge({ plan, status, size = 'md' }: PlanBadgeProps) {
     const { label, className } = CONFIG[plan];
     const isTrial = status === 'trial';
 
-    return (
-        <span className={`
-            inline-flex items-center gap-1 border rounded-full font-bold tracking-wider
-            ${size === 'sm' ? 'px-2 py-0.5 text-[10px]' : 'px-2.5 py-0.5 text-xs'}
-            ${className}
-        `}>
+    const badgeClassName = `
+        inline-flex items-center gap-1 border rounded-full font-bold tracking-wider
+        ${size === 'sm' ? 'px-2 py-0.5 text-[10px]' : 'px-2.5 py-0.5 text-xs'}
+        ${className}
+    `;
+
+    const content = (
+        <>
             {isTrial && (
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
             )}
             {isTrial ? 'TRIAL' : label}
+        </>
+    );
+
+    if (plan === 'free') {
+        return (
+            <Link href="/pricing" className={`${badgeClassName} hover:opacity-80 transition-opacity`}>
+                {content}
+            </Link>
+        );
+    }
+
+    return (
+        <span className={badgeClassName}>
+            {content}
         </span>
     );
 }
