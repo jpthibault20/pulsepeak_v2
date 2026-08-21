@@ -230,6 +230,25 @@ export default function AppClientWrapper({ initialProfile, initialSchedule, init
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialProfile?.firstName, initialProfile?.strava?.athleteId]);
 
+    // En PWA iOS installée, la réouverture de l'app depuis l'écran d'accueil
+    // reprend souvent une page suspendue (WebKit) sans remonter le composant :
+    // le useEffect ci-dessus (basé sur initialProfile figé au premier montage)
+    // ne se relance donc pas. On resynchronise aussi au retour au premier plan.
+    const lastAutoSyncRef = useRef(0);
+    useEffect(() => {
+        const AUTO_SYNC_MIN_INTERVAL_MS = 60_000;
+        const onVisible = () => {
+            if (document.visibilityState !== 'visible') return;
+            if (!profileRef.current.strava?.athleteId) return;
+            const now = Date.now();
+            if (now - lastAutoSyncRef.current < AUTO_SYNC_MIN_INTERVAL_MS) return;
+            lastAutoSyncRef.current = now;
+            handleSyncStrava();
+        };
+        document.addEventListener('visibilitychange', onVisible);
+        return () => document.removeEventListener('visibilitychange', onVisible);
+    }, [handleSyncStrava]);
+
     // --- Navigation Handler ---
     const handleViewChange = useCallback((next: View) => {
         setView(next);
