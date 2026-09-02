@@ -20,7 +20,8 @@ import {
 // Import des types
 import type { SportType } from '@/lib/data/type';
 import type { Objective, Workout } from '@/lib/data/DatabaseTypes';
-import { SubscriptionProvider, type Plan } from '@/lib/subscription/context';
+import { SubscriptionProvider, toSubscriptionStatus, type Plan } from '@/lib/subscription/context';
+import { isTrialEligible } from '@/lib/billing/trial';
 import { FreePlanGate } from '@/components/features/billing/FreePlanGate';
 
 // Import des composants
@@ -155,6 +156,7 @@ export default function AppClientWrapper({ initialProfile, initialSchedule, init
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncResult, setSyncResult] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
+    const [checkoutBanner, setCheckoutBanner] = useState<'pending' | 'confirmed' | 'timeout' | null>(null);
 
     const [genProgress, setGenProgress] = useState<GenProgressState | null>(null);
     const genProgressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -193,6 +195,49 @@ export default function AppClientWrapper({ initialProfile, initialSchedule, init
         }
     }, []);
 
+    // --- Retour de paiement Stripe (`/?checkout=success`) ---
+    // Le webhook `checkout.session.completed` (src/app/api/stripe/webhook/route.ts)
+    // met à jour `profiles.plan` en base, mais arrive de façon asynchrone : il peut
+    // encore être en vol quand l'utilisateur atterrit ici après la redirection Stripe.
+    // On affiche donc un état "en cours" et on re-fetch le profil à intervalles courts
+    // jusqu'à voir passer le plan à 'pro' (ou jusqu'à épuisement des tentatives).
+    useEffect(() => {
+        if (searchParams.get('checkout') !== 'success') return;
+        let cancelled = false;
+        setCheckoutBanner('pending');
+
+        (async () => {
+            const maxAttempts = 6;
+            for (let attempt = 0; attempt < maxAttempts; attempt++) {
+                await new Promise(resolve => setTimeout(resolve, attempt === 0 ? 1000 : 2000));
+                if (cancelled) return;
+                try {
+                    const { profile: profileData, schedule: scheduleData, objectives: objectivesData, activePlan: activePlanData } = await loadInitialData();
+                    if (cancelled) return;
+                    setProfile(profileData as Profile);
+                    setSchedule(scheduleData);
+                    setObjectives(objectivesData);
+                    setActivePlan(activePlanData);
+                    if ((profileData as Profile).plan === 'pro' || (profileData as Profile).plan === 'dev') {
+                        setCheckoutBanner('confirmed');
+                        updateUrlState({ checkout: null });
+                        setTimeout(() => { if (!cancelled) setCheckoutBanner(null); }, 5000);
+                        return;
+                    }
+                } catch (e) {
+                    console.error('Erreur vérification post-paiement:', e);
+                }
+            }
+            if (!cancelled) {
+                setCheckoutBanner('timeout');
+                updateUrlState({ checkout: null });
+            }
+        })();
+
+        return () => { cancelled = true; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     // --- Strava Sync Handler ---
     const profileRef = useRef(profile);
     profileRef.current = profile;
@@ -229,6 +274,25 @@ export default function AppClientWrapper({ initialProfile, initialSchedule, init
         return () => { cancelled = true; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialProfile?.firstName, initialProfile?.strava?.athleteId]);
+
+    // En PWA iOS installée, la réouverture de l'app depuis l'écran d'accueil
+    // reprend souvent une page suspendue (WebKit) sans remonter le composant :
+    // le useEffect ci-dessus (basé sur initialProfile figé au premier montage)
+    // ne se relance donc pas. On resynchronise aussi au retour au premier plan.
+    const lastAutoSyncRef = useRef(0);
+    useEffect(() => {
+        const AUTO_SYNC_MIN_INTERVAL_MS = 60_000;
+        const onVisible = () => {
+            if (document.visibilityState !== 'visible') return;
+            if (!profileRef.current.strava?.athleteId) return;
+            const now = Date.now();
+            if (now - lastAutoSyncRef.current < AUTO_SYNC_MIN_INTERVAL_MS) return;
+            lastAutoSyncRef.current = now;
+            handleSyncStrava();
+        };
+        document.addEventListener('visibilitychange', onVisible);
+        return () => document.removeEventListener('visibilitychange', onVisible);
+    }, [handleSyncStrava]);
 
     // --- Navigation Handler ---
     const handleViewChange = useCallback((next: View) => {
@@ -482,7 +546,16 @@ export default function AppClientWrapper({ initialProfile, initialSchedule, init
     }
 
     return (
-        <SubscriptionProvider subscription={{ role: profile.role, plan: (profile.plan ?? 'free') as Plan }}>
+        <SubscriptionProvider subscription={{
+            role:              profile.role,
+            plan:              (profile.plan ?? 'free') as Plan,
+            status:            toSubscriptionStatus(profile.billingStatus),
+            currentPeriodEnd:  profile.currentPeriodEnd ?? null,
+            cancelAtPeriodEnd: profile.cancelAtPeriodEnd ?? false,
+            hasStripeCustomer: !!profile.stripeCustomerId,
+            trialEndsAt:       profile.trialEndsAt ?? null,
+            trialEligible:     isTrialEligible(profile),
+        }}>
             <div className="flex flex-col min-h-dvh">
                 {showNav && (
                     <Nav
@@ -519,14 +592,32 @@ export default function AppClientWrapper({ initialProfile, initialSchedule, init
                         </div>
                     )}
 
-                    {isRefreshing && !isSyncing && (
+                    {checkoutBanner && (
+                        <div className={`fixed top-[5px] right-2 md:top-20 md:right-4 z-40 px-2 py-1 md:px-4 md:py-2 rounded-full md:rounded-lg shadow-lg flex items-center gap-1.5 md:gap-2 animate-in slide-in-from-top-2 pointer-events-none ${checkoutBanner === 'confirmed'
+                            ? 'bg-emerald-500/90 text-white'
+                            : checkoutBanner === 'timeout'
+                                ? 'bg-amber-500/90 text-white'
+                                : 'bg-blue-500/90 text-white'
+                            }`}>
+                            {checkoutBanner === 'pending' && (
+                                <div className="w-3 h-3 md:w-4 md:h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            )}
+                            <span className="text-xs md:text-sm font-medium">
+                                {checkoutBanner === 'pending' && 'Paiement confirmé, activation en cours…'}
+                                {checkoutBanner === 'confirmed' && '✓ Abonnement Pro activé !'}
+                                {checkoutBanner === 'timeout' && 'Paiement reçu — l’activation peut prendre quelques instants, rechargez la page dans un moment.'}
+                            </span>
+                        </div>
+                    )}
+
+                    {isRefreshing && !isSyncing && !checkoutBanner && (
                         <div className="fixed top-[5px] right-2 md:top-20 md:right-4 z-40 bg-blue-500/90 text-white px-2 py-1 md:px-4 md:py-2 rounded-full md:rounded-lg shadow-lg flex items-center gap-1.5 md:gap-2 animate-in slide-in-from-top-2 pointer-events-none">
                             <div className="w-3 h-3 md:w-4 md:h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                             <span className="text-xs md:text-sm font-medium">Synchro...</span>
                         </div>
                     )}
 
-                    {syncResult && !isSyncing && !isRefreshing && (
+                    {syncResult && !isSyncing && !isRefreshing && !checkoutBanner && (
                         <div className={`fixed top-[5px] right-2 md:top-20 md:right-4 z-40 px-2 py-1 md:px-4 md:py-2 rounded-full md:rounded-lg shadow-lg flex items-center gap-1.5 md:gap-2 animate-in slide-in-from-top-2 pointer-events-none ${syncResult.type === 'success'
                             ? 'bg-emerald-500/90 text-white'
                             : 'bg-slate-600/90 text-white'

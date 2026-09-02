@@ -1,6 +1,7 @@
 export const runtime = 'nodejs';
 
 import { createClient } from '@/lib/supabase/server';
+import { getProfile } from '@/lib/data/crud';
 import { buildChatSystemPrompt, type ChatContext } from '@/lib/ai/chat-prompt';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -49,6 +50,13 @@ export async function POST(req: Request) {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
             return new Response('Non authentifié.', { status: 401 });
+        }
+
+        // Coach IA réservé au plan Pro (feature 'chat-ai', voir src/lib/subscription/context.tsx)
+        const profile = await getProfile();
+        const hasChatAccess = profile.role === 'admin' || profile.plan === 'pro' || profile.plan === 'dev';
+        if (!hasChatAccess) {
+            return new Response('Le Coach IA est réservé au plan Pro.', { status: 403 });
         }
 
         const { messages, context }: { messages: ChatMessage[]; context: ChatContext } =

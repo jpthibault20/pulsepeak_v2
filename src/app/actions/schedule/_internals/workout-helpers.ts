@@ -25,6 +25,23 @@ export function findWorkoutIndex(workouts: Workout[], workoutId: string): number
 
 
 /**
+ * Le plan free a le calendrier en lecture seule (feature 'calendar-write',
+ * voir src/lib/subscription/context.tsx) — seuls pro/dev/admin peuvent
+ * modifier une séance (déplacer, changer de statut, supprimer, etc.).
+ */
+export function hasCalendarWriteAccess(profile: Pick<Profile, 'plan' | 'role'>): boolean {
+    return profile.role === 'admin' || profile.plan === 'pro' || profile.plan === 'dev';
+}
+
+/** @throws Error si l'utilisateur n'a pas les droits d'écriture sur le calendrier. */
+export function assertCalendarWriteAccess(profile: Pick<Profile, 'plan' | 'role'>): void {
+    if (!hasCalendarWriteAccess(profile)) {
+        throw new Error('Modification du calendrier réservée au plan Pro.');
+    }
+}
+
+
+/**
  * Transforme les données saisies par l'utilisateur dans le formulaire de
  * feedback (CompletedDataFeedback — majoritairement des strings) en objet
  * CompletedData canonique stocké en base (typé, normalisé en nombres).

@@ -5,7 +5,7 @@
  ******************************************************************************/
 
 import { describe, it, expect } from 'vitest';
-import { findWorkoutIndex, transformFeedbackToCompletedData } from './workout-helpers';
+import { assertCalendarWriteAccess, findWorkoutIndex, hasCalendarWriteAccess, transformFeedbackToCompletedData } from './workout-helpers';
 import { makeProfile, makeWorkout } from '@/test/fixtures';
 import type { CompletedDataFeedback } from '@/lib/data/type';
 
@@ -50,6 +50,36 @@ describe('findWorkoutIndex', () => {
     it('renvoie -1 pour un identifiant inconnu', () => {
         expect(findWorkoutIndex(workouts, 'inexistant')).toBe(-1);
         expect(findWorkoutIndex([], 'a')).toBe(-1);
+    });
+});
+
+// ─── Accès en écriture au calendrier (plan free = lecture seule) ──────────────
+
+describe('hasCalendarWriteAccess', () => {
+    it('refuse l\'écriture à un user en plan free', () => {
+        expect(hasCalendarWriteAccess({ plan: 'free', role: 'user' })).toBe(false);
+    });
+
+    it('autorise l\'écriture au plan pro', () => {
+        expect(hasCalendarWriteAccess({ plan: 'pro', role: 'user' })).toBe(true);
+    });
+
+    it('autorise l\'écriture au plan dev (octroi manuel admin)', () => {
+        expect(hasCalendarWriteAccess({ plan: 'dev', role: 'user' })).toBe(true);
+    });
+
+    it('autorise l\'écriture à un admin même en plan free', () => {
+        expect(hasCalendarWriteAccess({ plan: 'free', role: 'admin' })).toBe(true);
+    });
+});
+
+describe('assertCalendarWriteAccess', () => {
+    it('lève une erreur pour un user free', () => {
+        expect(() => assertCalendarWriteAccess({ plan: 'free', role: 'user' })).toThrow();
+    });
+
+    it('ne lève rien pour un user pro', () => {
+        expect(() => assertCalendarWriteAccess({ plan: 'pro', role: 'user' })).not.toThrow();
     });
 });
 

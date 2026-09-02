@@ -11,8 +11,8 @@ interface FreePlanGateProps {
     featureDesc?: string;   // sous-titre optionnel
 }
 
-const DEV_HIGHLIGHTS = [
-    'Génération de plans IA personnalisés',
+const PRO_HIGHLIGHTS = [
+    'Générations de plan IA illimitées',
     'Coach IA disponible 24/7',
     'Calendrier d\'entraînement complet',
     'Stats avancées & analyse de performance',
@@ -46,17 +46,14 @@ export function FreePlanGate({ children, featureLabel, featureDesc }: FreePlanGa
                     </p>
                 </div>
 
-                {/* Carte offre Développeur */}
+                {/* Carte plan Pro */}
                 <div className="bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-500/25 rounded-2xl p-5 mb-4 shadow-xl shadow-black/20">
                     <div className="flex items-start justify-between mb-4">
                         <div>
                             <div className="flex items-center gap-2 mb-1">
-                                <span className="text-slate-900 dark:text-white font-bold text-lg">Offre Développeur</span>
-                                <span className="bg-amber-50 dark:bg-amber-500/20 text-amber-600 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30 text-[10px] font-bold px-2 py-0.5 rounded-full tracking-wider">
-                                    BÊTA
-                                </span>
+                                <span className="text-slate-900 dark:text-white font-bold text-lg">Plan Pro</span>
                             </div>
-                            <p className="text-slate-500 text-xs">Accès complet · Phase de lancement</p>
+                            <p className="text-slate-500 text-xs">Accès complet · Sans engagement</p>
                         </div>
                         <div className="text-right">
                             <span className="text-3xl font-bold text-slate-900 dark:text-white">5€</span>
@@ -65,7 +62,7 @@ export function FreePlanGate({ children, featureLabel, featureDesc }: FreePlanGa
                     </div>
 
                     <ul className="space-y-2 mb-5">
-                        {DEV_HIGHLIGHTS.map(h => (
+                        {PRO_HIGHLIGHTS.map(h => (
                             <li key={h} className="flex items-center gap-2.5 text-sm text-slate-600 dark:text-slate-300">
                                 <Check size={13} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
                                 {h}

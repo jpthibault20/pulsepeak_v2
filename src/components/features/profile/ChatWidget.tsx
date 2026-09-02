@@ -3,6 +3,7 @@
 import { Bot, Send, X, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { Profile, Schedule } from "@/lib/data/DatabaseTypes";
+import { FeatureGate } from "@/components/features/billing/FeatureGate";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -185,55 +186,59 @@ export const ChatWidget = ({ isOpen, onClose, profile, schedule }: ChatWidgetPro
                 </button>
             </div>
 
-            {/* ── Messages ── */}
-            <div
-                ref={scrollRef}
-                className="flex-1 overflow-y-auto px-4 py-3 space-y-3"
-            >
-                {messages.map((msg, i) => (
-                    <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`
-                            max-w-[82%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed
-                            ${msg.role === 'user'
-                                ? 'bg-blue-600 text-white rounded-br-sm'
-                                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-bl-sm border border-slate-200 dark:border-slate-700/60'
-                            }
-                        `}>
-                            {msg.text}
-                            {msg.streaming && msg.text === '' && (
-                                <span className="flex gap-1 items-center h-4">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:0ms]" />
-                                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:150ms]" />
-                                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:300ms]" />
-                                </span>
-                            )}
-                        </div>
+            <FeatureGate feature="chat-ai" mode="blur" label="Coach IA">
+                <>
+                    {/* ── Messages ── */}
+                    <div
+                        ref={scrollRef}
+                        className="flex-1 overflow-y-auto px-4 py-3 space-y-3"
+                    >
+                        {messages.map((msg, i) => (
+                            <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                <div className={`
+                                    max-w-[82%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed
+                                    ${msg.role === 'user'
+                                        ? 'bg-blue-600 text-white rounded-br-sm'
+                                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-bl-sm border border-slate-200 dark:border-slate-700/60'
+                                    }
+                                `}>
+                                    {msg.text}
+                                    {msg.streaming && msg.text === '' && (
+                                        <span className="flex gap-1 items-center h-4">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:0ms]" />
+                                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:150ms]" />
+                                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:300ms]" />
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
                     </div>
-                ))}
-            </div>
 
-            {/* ── Input ── */}
-            <div className="px-3 pb-3 pt-2 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-b-2xl flex gap-2 items-center">
-                <input
-                    ref={inputRef}
-                    value={input}
-                    onChange={e => setInput(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
-                    placeholder="Posez votre question..."
-                    disabled={loading}
-                    className="flex-1 h-10 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 text-sm text-slate-900 dark:text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500/50 disabled:opacity-60 transition-colors"
-                />
-                <button
-                    onClick={handleSend}
-                    disabled={loading || !input.trim()}
-                    className="w-10 h-10 flex items-center justify-center bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl text-white transition-colors shrink-0"
-                >
-                    {loading
-                        ? <Loader2 size={16} className="animate-spin" />
-                        : <Send size={16} />
-                    }
-                </button>
-            </div>
+                    {/* ── Input ── */}
+                    <div className="px-3 pb-3 pt-2 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-b-2xl flex gap-2 items-center">
+                        <input
+                            ref={inputRef}
+                            value={input}
+                            onChange={e => setInput(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
+                            placeholder="Posez votre question..."
+                            disabled={loading}
+                            className="flex-1 h-10 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 text-sm text-slate-900 dark:text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500/50 disabled:opacity-60 transition-colors"
+                        />
+                        <button
+                            onClick={handleSend}
+                            disabled={loading || !input.trim()}
+                            className="w-10 h-10 flex items-center justify-center bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl text-white transition-colors shrink-0"
+                        >
+                            {loading
+                                ? <Loader2 size={16} className="animate-spin" />
+                                : <Send size={16} />
+                            }
+                        </button>
+                    </div>
+                </>
+            </FeatureGate>
         </div>
     );
 };

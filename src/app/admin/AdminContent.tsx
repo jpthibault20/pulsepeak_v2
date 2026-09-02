@@ -9,6 +9,8 @@ import {
 import { Card, Button } from '@/components/ui';
 import { ReturnCode } from '@/lib/data/type';
 import type { AdminUserRow, AdminStats } from '@/app/actions/admin';
+import type { PromotionSummary } from '@/lib/billing/promotions';
+import { PromotionsPanel } from './PromotionsPanel';
 import {
     updateUserPlanAction,
     updateUserRoleAction,
@@ -18,6 +20,7 @@ import {
 type Props = {
     initialUsers: AdminUserRow[];
     initialStats: AdminStats | null;
+    initialPromotions: PromotionSummary[];
 };
 
 const PLAN_OPTIONS: Array<'free' | 'dev' | 'pro'> = ['free', 'dev', 'pro'];
@@ -58,7 +61,7 @@ function daysSince(iso: string | null): number | null {
     return Math.floor((Date.now() - d.getTime()) / (24 * 60 * 60 * 1000));
 }
 
-export const AdminContent: React.FC<Props> = ({ initialUsers, initialStats }) => {
+export const AdminContent: React.FC<Props> = ({ initialUsers, initialStats, initialPromotions }) => {
     const [users, setUsers]       = useState<AdminUserRow[]>(initialUsers);
     const [stats]                 = useState<AdminStats | null>(initialStats);
     const [query, setQuery]       = useState('');
@@ -184,6 +187,9 @@ export const AdminContent: React.FC<Props> = ({ initialUsers, initialStats }) =>
                     />
                 </div>
             )}
+
+            {/* ── Codes promo ──────────────────────────────────────────── */}
+            <PromotionsPanel initialPromotions={initialPromotions} />
 
             {/* ── Filtres ──────────────────────────────────────────────── */}
             <Card className="mb-4">
