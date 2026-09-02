@@ -32,6 +32,7 @@ export const coachTypeEnum          = pgEnum('coach_type',          ['cycling', 
 export const subscriptionPlanEnum   = pgEnum('subscription_plan',   ['free', 'dev', 'pro']);
 export const userRoleEnum           = pgEnum('user_role',           ['user', 'admin']);
 export const planStatusEnum         = pgEnum('plan_status',         ['active', 'archived']);
+export const billingStatusEnum      = pgEnum('billing_status',      ['active', 'past_due', 'canceled', 'incomplete']);
 export const weekTypeEnum           = pgEnum('week_type',           ['Load', 'Recovery', 'Taper']);
 export const workoutStatusEnum      = pgEnum('workout_status',      ['pending', 'completed', 'missed']);
 export const workoutModeEnum        = pgEnum('workout_mode',        ['Outdoor', 'Indoor']);
@@ -112,6 +113,22 @@ export const profiles = pgTable('profiles', {
 
     tokenPerMonth:          integer('token_per_month').default(0).notNull(),
     tokenPerMonthResetDate: date('token_per_month_reset_date'),
+
+    // Abonnement Stripe — écrit exclusivement par le webhook (src/app/api/stripe/webhook),
+    // jamais par saveProfile() ni par le formulaire profil utilisateur.
+    stripeCustomerId:     varchar('stripe_customer_id', { length: 255 }),
+    stripeSubscriptionId: varchar('stripe_subscription_id', { length: 255 }),
+    stripePriceId:        varchar('stripe_price_id', { length: 255 }),
+    billingStatus:        billingStatusEnum('billing_status'),
+    currentPeriodEnd:     timestamp('current_period_end', { withTimezone: true }),
+    cancelAtPeriodEnd:    boolean('cancel_at_period_end').default(false).notNull(),
+    billingInterval:      varchar('billing_interval', { length: 10 }), // 'month' | 'year'
+
+    // Essai gratuit (1er mois offert), voir src/lib/billing/trial.ts.
+    // trialUsedAt n'est jamais remis à null : il consomme définitivement le droit à l'essai.
+    // trialEndsAt vaut null dès que l'essai est terminé (l'abonnement est alors payant).
+    trialUsedAt:          timestamp('trial_used_at', { withTimezone: true }),
+    trialEndsAt:          timestamp('trial_ends_at', { withTimezone: true }),
 
     theme:          varchar('theme', { length: 10 }).default('dark').notNull(),
 });

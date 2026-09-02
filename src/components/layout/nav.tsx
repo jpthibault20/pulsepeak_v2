@@ -88,9 +88,9 @@ export const Nav: React.FC<NavProps> = ({
                     {/* Mobile: plan badge + theme toggle */}
                     <div className="md:hidden flex items-center gap-2">
                         {plan === 'dev' && (
-                            <span className="flex items-center gap-1 px-2 py-1 rounded-lg border border-amber-500/25 bg-amber-50 dark:bg-amber-500/5 text-[10px]">
-                                <Zap size={9} className="text-amber-600 dark:text-amber-400" />
-                                <span className="text-amber-600 dark:text-amber-300 font-semibold">DEV plan</span>
+                            <span className="flex items-center gap-1 px-2 py-1 rounded-lg border border-blue-500/25 bg-blue-50 dark:bg-blue-500/5 text-[10px]">
+                                <Zap size={9} className="text-blue-600 dark:text-blue-400" />
+                                <span className="text-blue-600 dark:text-blue-300 font-semibold">Accès complet</span>
                             </span>
                         )}
                         {plan === 'pro' && (

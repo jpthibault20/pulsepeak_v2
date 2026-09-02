@@ -172,6 +172,43 @@ export const TAPER_RULES_PRINCIPAL: Record<number, TaperDayRule> = {
  * Règles J-x pour un objectif SECONDAIRE (fenêtre 4 jours).
  * Mini-taper : on ne sacrifie pas le bloc d'entraînement en cours.
  */
+// ---- Abonnement Stripe -------------------------------------------------------
+
+/**
+ * Date de fin de l'offre de lancement (tarif réduit 5€/mois).
+ * Après cette date, seuls les tarifs Pro normaux (9€/mois, 90€/an) sont proposés
+ * aux nouveaux abonnés. Les abonnés déjà sur le tarif de lancement le conservent
+ * (le prix Stripe souscrit ne change pas tant qu'ils restent abonnés).
+ */
+export const LAUNCH_OFFER_END_DATE = '2026-12-31';
+
+/**
+ * Nombre de générations de plan IA autorisées par mois pour le plan gratuit.
+ */
+export const FREE_PLAN_MONTHLY_AI_GENERATIONS = 1;
+
+/**
+ * Durée de l'essai gratuit offert à la première souscription (en jours).
+ * Passé en `subscription_data.trial_period_days` au Checkout Stripe : la carte
+ * est demandée mais aucun débit n'a lieu avant la fin de l'essai. Un utilisateur
+ * n'y a droit qu'une seule fois (voir profiles.trialUsedAt et lib/billing/trial.ts).
+ */
+export const TRIAL_PERIOD_DAYS = 30;
+
+/**
+ * Montants Pro en centimes, alignés sur les prix Stripe (STRIPE_PRICE_*).
+ * Sert uniquement à l'affichage — notamment au calcul du prix remisé quand un
+ * code promo est appliqué sur la page /pricing. Stripe reste la source de vérité
+ * du montant réellement facturé : toute modification d'un prix dans le dashboard
+ * Stripe doit être répercutée ici.
+ */
+export const PRO_PRICE_CENTS = {
+    monthly:       900,
+    monthlyLaunch: 500,
+    annual:        9000,
+} as const;
+
+
 export const TAPER_RULES_SECONDARY: Record<number, TaperDayRule> = {
     4: {
         label:             'J-4 · Intensité courte (rappel)',

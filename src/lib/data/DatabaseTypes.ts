@@ -79,6 +79,16 @@ export interface Profile {
     tokenPerMonth?: number;
     tokenPerMonthResetDate?: string;
 
+    stripeCustomerId?: string;
+    stripeSubscriptionId?: string;
+    stripePriceId?: string;
+    billingStatus?: 'active' | 'past_due' | 'canceled' | 'incomplete';
+    currentPeriodEnd?: string | null;
+    cancelAtPeriodEnd?: boolean;
+    billingInterval?: 'month' | 'year';
+    trialUsedAt?: string | null;
+    trialEndsAt?: string | null;
+
     theme?: 'dark' | 'light';
 
     workouts: Workout[]; //Not used for the moment, use in te future for relations

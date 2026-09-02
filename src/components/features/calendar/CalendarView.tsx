@@ -317,10 +317,14 @@ export function CalendarView({
                         </span>
                     )}
                     {plan === 'free' && (
-                        <span className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-blue-500/30 bg-blue-100 dark:bg-blue-500/5">
+                        <button
+                            onClick={() => router.push('/pricing')}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-blue-500/30 bg-blue-100 dark:bg-blue-500/5 hover:bg-blue-200 dark:hover:bg-blue-500/10 transition-colors"
+                            title="Voir les offres"
+                        >
                             <Zap size={11} className="text-blue-600 dark:text-blue-400" />
                             <span className="text-blue-600 dark:text-blue-300 text-xs font-bold tracking-wider">GRATUIT</span>
-                        </span>
+                        </button>
                     )}
 
                     {scheduleData.summary && (
