@@ -124,6 +124,12 @@ export const profiles = pgTable('profiles', {
     cancelAtPeriodEnd:    boolean('cancel_at_period_end').default(false).notNull(),
     billingInterval:      varchar('billing_interval', { length: 10 }), // 'month' | 'year'
 
+    // Essai gratuit (1er mois offert), voir src/lib/billing/trial.ts.
+    // trialUsedAt n'est jamais remis à null : il consomme définitivement le droit à l'essai.
+    // trialEndsAt vaut null dès que l'essai est terminé (l'abonnement est alors payant).
+    trialUsedAt:          timestamp('trial_used_at', { withTimezone: true }),
+    trialEndsAt:          timestamp('trial_ends_at', { withTimezone: true }),
+
     theme:          varchar('theme', { length: 10 }).default('dark').notNull(),
 });
 

@@ -34,6 +34,8 @@ export interface Subscription {
      * cas il n'y a rien à gérer via le Billing Portal.
      */
     hasStripeCustomer?: boolean;
+    /** L'utilisateur n'a pas encore consommé son mois offert (voir lib/billing/trial.ts). */
+    trialEligible?: boolean;
 }
 
 // ─── Feature map ──────────────────────────────────────────────────────────────
@@ -108,6 +110,7 @@ export function SubscriptionProvider({ children, subscription }: SubscriptionPro
         currentPeriodEnd:  subscription?.currentPeriodEnd ?? null,
         cancelAtPeriodEnd: subscription?.cancelAtPeriodEnd ?? false,
         hasStripeCustomer: subscription?.hasStripeCustomer ?? false,
+        trialEligible:     subscription?.trialEligible ?? false,
     };
     return (
         <SubscriptionContext.Provider value={value}>

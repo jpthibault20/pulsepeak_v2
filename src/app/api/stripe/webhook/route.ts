@@ -37,12 +37,20 @@ function toBillingStatus(status: Stripe.Subscription.Status): BillingStatus {
 }
 
 async function applySubscriptionToProfile(userId: string, subscription: Stripe.Subscription) {
-    const [current] = await db.select({ plan: profiles.plan }).from(profiles).where(eq(profiles.id, userId));
+    const [current] = await db
+        .select({ plan: profiles.plan, trialUsedAt: profiles.trialUsedAt })
+        .from(profiles)
+        .where(eq(profiles.id, userId));
     if (current?.plan === 'dev') return; // octroi manuel admin — jamais écrasé par Stripe
 
     const isActive = subscription.status === 'active' || subscription.status === 'trialing';
     const priceId = subscription.items.data[0]?.price.id;
     const periodEnd = subscription.items.data[0]?.current_period_end;
+
+    // Essai gratuit : trialEndsAt ne vit que pendant l'essai, alors que trialUsedAt
+    // est définitif — une fois posé, il interdit tout nouvel essai (voir lib/billing/trial.ts).
+    const trialEnd = subscription.trial_end ? new Date(subscription.trial_end * 1000) : null;
+    const trialUsedAt = current?.trialUsedAt ?? (trialEnd ? new Date() : null);
 
     await db
         .update(profiles)
@@ -55,6 +63,8 @@ async function applySubscriptionToProfile(userId: string, subscription: Stripe.S
             currentPeriodEnd:     periodEnd ? new Date(periodEnd * 1000) : null,
             cancelAtPeriodEnd:    subscription.cancel_at_period_end,
             billingInterval:      billingIntervalFromSubscription(subscription),
+            trialEndsAt:          subscription.status === 'trialing' ? trialEnd : null,
+            trialUsedAt,
             updatedAt:            new Date(),
         })
         .where(eq(profiles.id, userId));
@@ -74,6 +84,7 @@ async function clearSubscriptionFromProfile(userId: string) {
             currentPeriodEnd:     null,
             cancelAtPeriodEnd:    false,
             billingInterval:      null,
+            trialEndsAt:          null, // trialUsedAt volontairement conservé : le droit à l'essai reste consommé
             updatedAt:            new Date(),
         })
         .where(eq(profiles.id, userId));

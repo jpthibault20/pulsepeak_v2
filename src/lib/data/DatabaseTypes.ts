@@ -86,6 +86,8 @@ export interface Profile {
     currentPeriodEnd?: string | null;
     cancelAtPeriodEnd?: boolean;
     billingInterval?: 'month' | 'year';
+    trialUsedAt?: string | null;
+    trialEndsAt?: string | null;
 
     theme?: 'dark' | 'light';
 

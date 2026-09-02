@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { isAdmin } from '@/lib/admin';
 import { listAdminUsersAction, getAdminStatsAction } from '@/app/actions/admin';
+import { listPromotionsAction } from '@/app/actions/promotions';
 import { AdminContent } from './AdminContent';
 
 export const metadata = {
@@ -13,14 +14,15 @@ export default async function AdminPage() {
         redirect('/');
     }
 
-    const [users, stats] = await Promise.all([
+    const [users, stats, promotions] = await Promise.all([
         listAdminUsersAction(),
         getAdminStatsAction(),
+        listPromotionsAction(),
     ]);
 
     return (
         <main className="min-h-screen bg-white dark:bg-slate-950">
-            <AdminContent initialUsers={users} initialStats={stats} />
+            <AdminContent initialUsers={users} initialStats={stats} initialPromotions={promotions} />
         </main>
     );
 }

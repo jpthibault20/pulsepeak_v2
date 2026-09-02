@@ -21,6 +21,7 @@ import {
 import type { SportType } from '@/lib/data/type';
 import type { Objective, Workout } from '@/lib/data/DatabaseTypes';
 import { SubscriptionProvider, toSubscriptionStatus, type Plan } from '@/lib/subscription/context';
+import { isTrialEligible } from '@/lib/billing/trial';
 import { FreePlanGate } from '@/components/features/billing/FreePlanGate';
 
 // Import des composants
@@ -530,6 +531,8 @@ export default function AppClientWrapper({ initialProfile, initialSchedule, init
             currentPeriodEnd:  profile.currentPeriodEnd ?? null,
             cancelAtPeriodEnd: profile.cancelAtPeriodEnd ?? false,
             hasStripeCustomer: !!profile.stripeCustomerId,
+            trialEndsAt:       profile.trialEndsAt ?? null,
+            trialEligible:     isTrialEligible(profile),
         }}>
             <div className="flex flex-col min-h-dvh">
                 {showNav && (

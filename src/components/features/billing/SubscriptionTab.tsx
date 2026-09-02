@@ -4,16 +4,21 @@ import React, { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import {
     Check, Zap, ArrowRight,
-    CreditCard, AlertCircle,
+    CreditCard, AlertCircle, Gift,
 } from 'lucide-react';
 import { useSubscription } from '@/lib/subscription/context';
 import { createPortalSessionAction } from '@/app/actions/billing';
+import { formatTrialEnd, isTrialing, trialDaysRemaining } from '@/lib/billing/trial';
 
 export function SubscriptionTab() {
-    const { plan: currentPlan, status, cancelAtPeriodEnd, hasStripeCustomer } = useSubscription();
+    const { plan: currentPlan, status, cancelAtPeriodEnd, hasStripeCustomer, trialEndsAt, trialEligible } = useSubscription();
     const router = useRouter();
     const [isPending, startTransition] = useTransition();
     const [error, setError] = useState<string | null>(null);
+
+    // Essai en cours : Stripe range le statut en 'active', seul trialEndsAt le distingue.
+    const trialing = isTrialing({ trialEndsAt });
+    const daysLeft = trialDaysRemaining(trialEndsAt);
 
     const handleManageSubscription = () => {
         setError(null);
@@ -41,7 +46,9 @@ export function SubscriptionTab() {
                         <p className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">
                             {currentPlan === 'free' && 'Aucun abonnement actif'}
                             {currentPlan === 'dev'  && 'Accès complet · Octroi spécial'}
-                            {currentPlan === 'pro'  && `Plan Pro · ${status === 'active' ? (cancelAtPeriodEnd ? 'Résiliation en cours' : 'Actif') : status}`}
+                            {currentPlan === 'pro'  && (trialing
+                                ? `Plan Pro · Essai gratuit${cancelAtPeriodEnd ? ' · Résiliation en cours' : ''}`
+                                : `Plan Pro · ${status === 'active' ? (cancelAtPeriodEnd ? 'Résiliation en cours' : 'Actif') : status}`)}
                         </p>
                     </div>
                     {currentPlan === 'free' ? (
@@ -62,11 +69,26 @@ export function SubscriptionTab() {
                     )}
                 </div>
 
+                {currentPlan === 'pro' && trialing && (
+                    <div className="mt-4 flex items-start gap-2 bg-emerald-50 dark:bg-emerald-500/5 border border-emerald-200 dark:border-emerald-500/15 rounded-xl p-3">
+                        <Gift size={14} className="text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
+                        <p className="text-emerald-700 dark:text-emerald-300/80 text-xs leading-relaxed">
+                            Mois offert en cours : {daysLeft} jour{daysLeft > 1 ? 's' : ''} restant{daysLeft > 1 ? 's' : ''}.
+                            {cancelAtPeriodEnd
+                                ? ` Aucun débit ne sera effectué, votre accès Pro s'arrête le ${formatTrialEnd(trialEndsAt)}.`
+                                : ` Premier prélèvement le ${formatTrialEnd(trialEndsAt)} — résiliez avant cette date pour ne rien payer.`}
+                        </p>
+                    </div>
+                )}
+
                 {currentPlan === 'free' && (
                     <div className="mt-4 flex items-start gap-2 bg-amber-50 dark:bg-amber-500/5 border border-amber-200 dark:border-amber-500/15 rounded-xl p-3">
                         <AlertCircle size={14} className="text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
                         <p className="text-amber-600 dark:text-amber-300/80 text-xs leading-relaxed">
-                            Vous êtes sur le plan Gratuit (fonctionnalités limitées). Passez au Pro pour un accès complet.
+                            Vous êtes sur le plan Gratuit (fonctionnalités limitées).
+                            {trialEligible
+                                ? " Votre 1er mois de Pro est offert : testez l'accès complet sans être débité."
+                                : ' Passez au Pro pour un accès complet.'}
                         </p>
                     </div>
                 )}
@@ -101,8 +123,8 @@ export function SubscriptionTab() {
                     onClick={() => router.push('/pricing')}
                     className="w-full flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-500 text-white font-semibold py-3 rounded-xl transition-colors text-sm shadow-lg shadow-amber-900/20"
                 >
-                    <Zap size={14} />
-                    Voir les offres
+                    {trialEligible ? <Gift size={14} /> : <Zap size={14} />}
+                    {trialEligible ? 'Profiter du mois offert' : 'Voir les offres'}
                     <ArrowRight size={14} />
                 </button>
             ) : (

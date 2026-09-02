@@ -86,6 +86,8 @@ function toProfile(row: typeof profiles.$inferSelect): Profile {
         currentPeriodEnd:       row.currentPeriodEnd instanceof Date ? row.currentPeriodEnd.toISOString() : (row.currentPeriodEnd ?? null),
         cancelAtPeriodEnd:      row.cancelAtPeriodEnd ?? false,
         billingInterval:        (row.billingInterval as 'month' | 'year' | null) ?? undefined,
+        trialUsedAt:            row.trialUsedAt instanceof Date ? row.trialUsedAt.toISOString() : (row.trialUsedAt ?? null),
+        trialEndsAt:            row.trialEndsAt instanceof Date ? row.trialEndsAt.toISOString() : (row.trialEndsAt ?? null),
         theme:              (row.theme as 'dark' | 'light') ?? 'dark',
         workouts:           [],
     };

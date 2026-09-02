@@ -4,6 +4,7 @@ import { getProfile } from '@/lib/data/crud';
 import { PricingContent } from './PricingContent';
 import type { Plan } from '@/lib/subscription/context';
 import { LAUNCH_OFFER_END_DATE } from '@/app/actions/constants';
+import { isTrialEligible } from '@/lib/billing/trial';
 
 export default async function PricingPage() {
     const supabase = await createClient();
@@ -21,6 +22,7 @@ export default async function PricingPage() {
         <PricingContent
             currentPlan={currentPlan}
             launchOfferActive={launchOfferActive}
+            trialEligible={isTrialEligible(profile)}
             priceIds={{
                 monthly:       process.env.STRIPE_PRICE_MONTHLY ?? '',
                 annual:        process.env.STRIPE_PRICE_ANNUAL ?? '',
