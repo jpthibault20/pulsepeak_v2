@@ -4,14 +4,16 @@ import { getProfile } from '@/lib/data/crud';
 import { stripe } from '@/lib/stripe/client';
 import { ReturnCode } from '@/lib/data/type';
 import { TRIAL_PERIOD_DAYS } from '@/app/actions/constants';
-import { isTrialEligible } from '@/lib/billing/trial';
+import { billingIntervalForPrice, isTrialEligibleForInterval } from '@/lib/billing/trial';
 
 /**
  * Ouvre une session Checkout Stripe.
  *
- * - Essai gratuit : `trial_period_days` n'est ajouté que si l'utilisateur n'a
- *   jamais consommé son droit à l'essai (voir lib/billing/trial.ts). La carte est
- *   demandée, aucun débit avant la fin de l'essai.
+ * - Essai gratuit : `trial_period_days` n'est ajouté que sur une formule
+ *   MENSUELLE, et seulement si l'utilisateur n'a jamais consommé son droit à
+ *   l'essai (voir lib/billing/trial.ts). L'annuel est facturé immédiatement :
+ *   sa remise (-17 %) tient lieu d'offre. La carte est demandée, aucun débit
+ *   avant la fin de l'essai.
  * - Code promo : `allow_promotion_codes` active le champ natif de Stripe sur la
  *   page de paiement — c'est là que le client saisit son code (voir les codes
  *   gérés depuis /admin, actions/promotions.ts).
@@ -19,7 +21,8 @@ import { isTrialEligible } from '@/lib/billing/trial';
 export async function createCheckoutSessionAction(priceId: string): Promise<{ state: ReturnCode; url?: string }> {
     try {
         const profile = await getProfile();
-        const trialEligible = isTrialEligible(profile);
+        const interval = billingIntervalForPrice(priceId, process.env.STRIPE_PRICE_ANNUAL);
+        const trialEligible = isTrialEligibleForInterval(profile, interval);
 
         const session = await stripe.checkout.sessions.create({
             mode: 'subscription',

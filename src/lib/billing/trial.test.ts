@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { formatTrialEnd, isTrialEligible, isTrialing, trialDaysRemaining } from './trial';
+import {
+    billingIntervalForPrice,
+    formatTrialEnd,
+    intervalAllowsTrial,
+    isTrialEligible,
+    isTrialEligibleForInterval,
+    isTrialing,
+    trialDaysRemaining,
+} from './trial';
 
 describe('isTrialEligible', () => {
     it("accorde l'essai à un profil qui n'a jamais rien souscrit", () => {
@@ -12,6 +20,45 @@ describe('isTrialEligible', () => {
 
     it("refuse l'essai à un ancien abonné, même sans trace d'essai", () => {
         expect(isTrialEligible({ stripeSubscriptionId: 'sub_123' })).toBe(false);
+    });
+});
+
+describe('intervalAllowsTrial', () => {
+    it("réserve le mois offert à la formule mensuelle", () => {
+        expect(intervalAllowsTrial('monthly')).toBe(true);
+    });
+
+    it("refuse le mois offert sur la formule annuelle", () => {
+        expect(intervalAllowsTrial('annual')).toBe(false);
+    });
+});
+
+describe('isTrialEligibleForInterval', () => {
+    it("accorde l'essai à un nouveau profil sur le mensuel", () => {
+        expect(isTrialEligibleForInterval({}, 'monthly')).toBe(true);
+    });
+
+    it("refuse l'essai sur l'annuel même à un profil qui y aurait droit", () => {
+        expect(isTrialEligibleForInterval({}, 'annual')).toBe(false);
+    });
+
+    it("refuse l'essai sur le mensuel à un profil qui l'a déjà consommé", () => {
+        expect(isTrialEligibleForInterval({ trialUsedAt: '2026-01-15T10:00:00.000Z' }, 'monthly')).toBe(false);
+    });
+});
+
+describe('billingIntervalForPrice', () => {
+    it("reconnaît le prix annuel configuré", () => {
+        expect(billingIntervalForPrice('price_annual', 'price_annual')).toBe('annual');
+    });
+
+    it('traite tout autre prix comme mensuel', () => {
+        expect(billingIntervalForPrice('price_monthly', 'price_annual')).toBe('monthly');
+    });
+
+    it("ne bascule pas en annuel quand l'identifiant annuel n'est pas configuré", () => {
+        expect(billingIntervalForPrice('price_monthly', undefined)).toBe('monthly');
+        expect(billingIntervalForPrice('', '')).toBe('monthly');
     });
 });
 
