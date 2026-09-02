@@ -7,6 +7,7 @@ import type { Plan } from '@/lib/subscription/context';
 import { createCheckoutSessionAction } from '@/app/actions/billing';
 import { PRO_PRICE_CENTS, TRIAL_PERIOD_DAYS } from '@/app/actions/constants';
 import { formatMoneyCents } from '@/lib/billing/promotions';
+import { intervalAllowsTrial } from '@/lib/billing/trial';
 
 interface PriceIds {
     monthly:       string;
@@ -57,6 +58,10 @@ export function PricingContent({ currentPlan = 'free', launchOfferActive, trialE
         : (launchOfferActive ? PRO_PRICE_CENTS.monthlyLaunch : PRO_PRICE_CENTS.monthly);
     const period = billing === 'annual' ? '/an' : '/mois';
 
+    // Le mois offert ne vaut que pour le mensuel : l'annuel est facturé d'emblée
+    // (même règle que le Checkout, voir actions/billing.ts).
+    const trialOffered = trialEligible && intervalAllowsTrial(billing);
+
     const handleSubscribe = () => {
         setError(null);
         startTransition(async () => {
@@ -89,7 +94,7 @@ export function PricingContent({ currentPlan = 'free', launchOfferActive, trialE
             {/* Hero */}
             <div className="max-w-4xl mx-auto px-4 pt-12 pb-6 text-center">
                 <div className="flex flex-wrap items-center justify-center gap-2 mb-4">
-                    {trialEligible && (
+                    {trialOffered && (
                         <div className="inline-flex items-center gap-2 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 rounded-full px-4 py-1.5 text-emerald-600 dark:text-emerald-300 text-xs font-semibold">
                             <Gift size={12} />
                             1<sup>er</sup> mois offert · sans engagement
@@ -106,7 +111,7 @@ export function PricingContent({ currentPlan = 'free', launchOfferActive, trialE
                     Choisissez votre plan
                 </h1>
                 <p className="text-slate-500 dark:text-slate-400 text-base max-w-xl mx-auto leading-relaxed">
-                    {trialEligible
+                    {trialOffered
                         ? `Testez le plan Pro gratuitement pendant ${TRIAL_PERIOD_DAYS} jours : accès complet à la génération de plans IA, au coach IA et aux stats avancées. Vous n'êtes débité qu'à la fin de l'essai.`
                         : 'Essayez PulsePeak gratuitement, puis passez au plan Pro pour un accès complet à la génération de plans IA, au coach IA et aux stats avancées.'}
                 </p>
@@ -204,7 +209,7 @@ export function PricingContent({ currentPlan = 'free', launchOfferActive, trialE
 
                         <div className="flex flex-wrap items-center gap-2 mb-2">
                             <span className="text-slate-900 dark:text-white font-bold text-lg">Pro</span>
-                            {currentPlan !== 'pro' && trialEligible && (
+                            {currentPlan !== 'pro' && trialOffered && (
                                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-emerald-50 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30">
                                     1<sup>ER</sup> MOIS OFFERT
                                 </span>
@@ -227,7 +232,7 @@ export function PricingContent({ currentPlan = 'free', launchOfferActive, trialE
                                 )}
                                 {billing === 'annual' && ` · soit ${formatMoneyCents(Math.round(priceCents / 12))}/mois`}
                             </span>
-                            {trialEligible && currentPlan !== 'pro' && (
+                            {trialOffered && currentPlan !== 'pro' && (
                                 <p className="text-emerald-600 dark:text-emerald-400 text-xs font-semibold mt-1.5">
                                     Gratuit les {TRIAL_PERIOD_DAYS} premiers jours, puis {formatMoneyCents(priceCents)}{period}
                                 </p>
@@ -259,12 +264,12 @@ export function PricingContent({ currentPlan = 'free', launchOfferActive, trialE
                                     disabled={isPending || !priceId}
                                     className="flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition-colors shadow-lg shadow-amber-900/30 text-sm"
                                 >
-                                    {trialEligible ? <Gift size={14} /> : <Zap size={14} />}
+                                    {trialOffered ? <Gift size={14} /> : <Zap size={14} />}
                                     {isPending
                                         ? 'Redirection…'
-                                        : trialEligible ? 'Démarrer le mois offert' : 'Passer au Pro'}
+                                        : trialOffered ? 'Démarrer le mois offert' : 'Passer au Pro'}
                                 </button>
-                                {trialEligible && (
+                                {trialOffered && (
                                     <p className="text-center text-slate-500 dark:text-slate-400 text-[11px] mt-2 leading-relaxed">
                                         Carte demandée, aucun débit avant la fin des {TRIAL_PERIOD_DAYS} jours.
                                         Annulez quand vous voulez pendant l&apos;essai.
@@ -296,7 +301,7 @@ export function PricingContent({ currentPlan = 'free', launchOfferActive, trialE
                 {/* Garanties */}
                 <div className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
                     {[
-                        trialEligible
+                        trialOffered
                             ? { icon: Gift, label: `${TRIAL_PERIOD_DAYS} jours offerts`, desc: 'Aucun débit avant la fin de l’essai' }
                             : { icon: Zap, label: 'Accès immédiat', desc: 'Disponible dès la confirmation du paiement' },
                         { icon: Shield, label: 'Sans engagement', desc: 'Résiliez à tout moment depuis votre profil' },
